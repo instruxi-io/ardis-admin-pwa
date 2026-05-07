@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "enforcer-docs": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "https://github.com/instruxi-io/enforcer-docs-mcp/releases/latest/download/enforcer-docs-mcp.tgz"
+      ],
+      "env": {}
+    }
+  }
+}
