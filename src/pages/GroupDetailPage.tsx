@@ -17,7 +17,7 @@ export default function GroupDetailPage() {
   const groupQuery = useQuery({
     queryKey: ['admin', 'groups', id],
     queryFn: () =>
-      getEnforcerApiClient().get<{ success: boolean; data: AdminGroup }>(`/api/v1/enforcer/admin/groups/${id}`),
+      getEnforcerApiClient().get<{ success: boolean; data: AdminGroup }>(`admin/groups/${id}`),
     enabled: !!id,
   })
 
@@ -25,7 +25,7 @@ export default function GroupDetailPage() {
     queryKey: ['admin', 'groups', id, 'users'],
     queryFn: () =>
       getEnforcerApiClient().get<PaginatedResponse<UserListItem>>(
-        `/api/v1/enforcer/admin/groups/${id}/users`,
+        `admin/groups/${id}/users`,
         { limit: 100 }
       ),
     enabled: !!id,
@@ -33,7 +33,7 @@ export default function GroupDetailPage() {
 
   const removeMutation = useMutation({
     mutationFn: (userId: string) =>
-      getEnforcerApiClient().delete<BaseResponse>(`/api/v1/enforcer/admin/groups/${id}/users/${userId}`),
+      getEnforcerApiClient().delete<BaseResponse>(`admin/groups/${id}/users/${userId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'groups', id, 'users'] })
       toast.success('User removed from group')

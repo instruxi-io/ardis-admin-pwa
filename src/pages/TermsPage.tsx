@@ -30,7 +30,7 @@ export default function TermsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'terms', activeTenantId],
     queryFn: () =>
-      getEnforcerApiClient().get<PaginatedResponse<AdminTerm>>('/api/v1/enforcer/admin/terms', { limit: 100 }),
+      getEnforcerApiClient().get<PaginatedResponse<AdminTerm>>('admin/terms', { limit: 100 }),
   })
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<CreateForm>({
@@ -39,7 +39,7 @@ export default function TermsPage() {
 
   const createMutation = useMutation({
     mutationFn: (body: CreateTermRequest) =>
-      getEnforcerApiClient().post<BaseResponse>('/api/v1/enforcer/admin/terms', body),
+      getEnforcerApiClient().post<BaseResponse>('admin/terms', body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'terms'] })
       toast.success('Term created')
@@ -51,7 +51,7 @@ export default function TermsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) =>
-      getEnforcerApiClient().delete<BaseResponse>(`/api/v1/enforcer/admin/terms/${id}`),
+      getEnforcerApiClient().delete<BaseResponse>(`admin/terms/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'terms'] })
       toast.success('Term deleted')

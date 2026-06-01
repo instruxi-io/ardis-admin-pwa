@@ -14,7 +14,7 @@ export default function GroupsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'groups', activeTenantId],
     queryFn: () =>
-      getEnforcerApiClient().get<PaginatedResponse<AdminGroup>>('/api/v1/enforcer/admin/groups', { limit: 100 }),
+      getEnforcerApiClient().get<PaginatedResponse<AdminGroup>>('admin/groups', { limit: 100 }),
     refetchInterval: 60_000,
   })
 

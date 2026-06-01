@@ -29,21 +29,21 @@ export default function DashboardPage() {
   const usersQuery = useQuery({
     queryKey: ['admin', 'users', 'summary', activeTenantId],
     queryFn: () =>
-      getEnforcerApiClient().get<PaginatedResponse<UserListItem>>('/api/v1/enforcer/admin/users', { limit: 1 }),
+      getEnforcerApiClient().get<PaginatedResponse<UserListItem>>('admin/users', { limit: 1 }),
     refetchInterval: 60_000,
   })
 
   const activeUsersQuery = useQuery({
     queryKey: ['admin', 'users', 'active', activeTenantId],
     queryFn: () =>
-      getEnforcerApiClient().get<PaginatedResponse<UserListItem>>('/api/v1/enforcer/admin/users', { limit: 1 }),
+      getEnforcerApiClient().get<PaginatedResponse<UserListItem>>('admin/users', { limit: 1 }),
     refetchInterval: 60_000,
   })
 
   const sessionsQuery = useQuery({
     queryKey: ['admin', 'sessions', 'recent', activeTenantId],
     queryFn: () =>
-      getEnforcerApiClient().get<PaginatedResponse<AdminSession>>('/api/v1/enforcer/admin/sessions', {
+      getEnforcerApiClient().get<PaginatedResponse<AdminSession>>('admin/sessions', {
         limit: 10,
         offset: 0,
       }),

@@ -20,6 +20,7 @@ export class EnforcerApiError extends Error {
 export interface EnforcerApiClientConfig {
   baseURL?: string
   getJwtToken: () => string | null
+  getApiKey?: () => string | null
   maxRetries?: number
   baseDelay?: number
 }
@@ -27,11 +28,13 @@ export interface EnforcerApiClientConfig {
 export class EnforcerApiClient {
   private axiosInstance: AxiosInstance
   private getJwtToken: () => string | null
+  private getApiKey: () => string | null
   private maxRetries: number
   private baseDelay: number
 
   constructor(config: EnforcerApiClientConfig) {
     this.getJwtToken = config.getJwtToken
+    this.getApiKey = config.getApiKey ?? (() => null)
     this.maxRetries = config.maxRetries ?? 3
     this.baseDelay = config.baseDelay ?? 1000
 
@@ -45,8 +48,13 @@ export class EnforcerApiClient {
       const url = cfg.url ?? ''
       const isPublic = url.includes('/public/')
       if (!isPublic) {
-        const token = this.getJwtToken()
-        if (token) cfg.headers.Authorization = `Bearer ${token}`
+        const apiKey = this.getApiKey()
+        if (apiKey) {
+          cfg.headers['X-API-Key'] = apiKey
+        } else {
+          const token = this.getJwtToken()
+          if (token) cfg.headers.Authorization = `Bearer ${token}`
+        }
       }
       if (cfg.data instanceof FormData) delete cfg.headers['Content-Type']
       return cfg
@@ -168,7 +176,7 @@ export class EnforcerApiClient {
       }
       const statusMessages: Record<number, string> = {
         400: `Bad Request: ${message}`,
-        401: 'Session expired — please log in again',
+        401: 'Unauthorised — invalid or expired credentials',
         403: 'You do not have permission to access this resource',
         404: 'Resource not found',
         429: 'Too many requests — please wait and try again',

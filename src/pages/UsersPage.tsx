@@ -30,13 +30,13 @@ export default function UsersPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'users', params, activeTenantId],
     queryFn: () =>
-      getEnforcerApiClient().get<PaginatedResponse<UserListItem>>('/api/v1/enforcer/admin/users', params as Record<string, unknown>),
+      getEnforcerApiClient().get<PaginatedResponse<UserListItem>>('admin/users', params as Record<string, unknown>),
     refetchInterval: 60_000,
   })
 
   const activateMutation = useMutation({
     mutationFn: (userId: string) =>
-      getEnforcerApiClient().put(`/api/v1/enforcer/admin/users/${userId}/activate`),
+      getEnforcerApiClient().put(`admin/users/${userId}/activate`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'users'] })
       toast.success('User activated')
@@ -46,7 +46,7 @@ export default function UsersPage() {
 
   const deactivateMutation = useMutation({
     mutationFn: (userId: string) =>
-      getEnforcerApiClient().put(`/api/v1/enforcer/admin/users/${userId}/deactivate`),
+      getEnforcerApiClient().put(`admin/users/${userId}/deactivate`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'users'] })
       toast.success('User deactivated')

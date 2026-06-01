@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import type { PublicAccount, JwtClaims } from '@/types/enforcer/auth'
-import { decodeJwt, isTokenExpired, tokenStorage } from '@/lib/jwt'
+import { decodeJwt, isTokenExpired, tokenStorage, apiKeyStorage } from '@/lib/jwt'
 import { createEnforcerApiClient, getEnforcerApiClient } from '@/lib/enforcerApiClient'
 import { env } from '@/config/env'
 import type { VerifyAuthResponse } from '@/types/enforcer/auth'
@@ -15,8 +15,9 @@ interface AuthState {
 }
 
 interface AuthContextValue extends AuthState {
-  sendOtp: (email: string) => Promise<void>
-  verifyOtp: (email: string, otp: string) => Promise<void>
+  sendOtp: (email: string, tenantCode?: string) => Promise<void>
+  verifyOtp: (email: string, otp: string, tenantCode?: string) => Promise<void>
+  apiKeyLogin: (apiKey: string) => Promise<void>
   setActiveTenant: (tenantId: string) => void
   logout: () => void
 }
@@ -35,10 +36,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const clientInitialised = useRef(false)
 
   const getToken = () => tokenStorage.getToken()
+  const getApiKey = () => apiKeyStorage.get()
 
   useEffect(() => {
     if (!clientInitialised.current) {
-      createEnforcerApiClient({ baseURL: env.ENFORCER_BASE_URL, getJwtToken: getToken })
+      createEnforcerApiClient({ baseURL: env.ENFORCER_BASE_URL, getJwtToken: getToken, getApiKey })
       clientInitialised.current = true
     }
 
@@ -52,20 +54,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         claims,
         activeTenantId: claims?.tenant_id ?? null,
       })
-    } else {
-      tokenStorage.clear()
-      setState((s) => ({ ...s, ready: true }))
+      return
     }
+
+    const storedKey = apiKeyStorage.get()
+    if (storedKey) {
+      getEnforcerApiClient()
+        .get<BaseResponse & { data: PublicAccount }>('users/me')
+        .then((res) => {
+          setState({
+            ready: true,
+            authenticated: true,
+            account: res.data,
+            claims: null,
+            activeTenantId: res.data.tenant_id ?? null,
+          })
+        })
+        .catch(() => {
+          apiKeyStorage.clear()
+          setState((s) => ({ ...s, ready: true }))
+        })
+      return
+    }
+
+    tokenStorage.clear()
+    setState((s) => ({ ...s, ready: true }))
   }, [])
 
-  const sendOtp = async (email: string) => {
-    await getEnforcerApiClient().post<BaseResponse>('/api/v1/enforcer/auth/login', { email })
+  const sendOtp = async (email: string, tenantCode?: string) => {
+    await getEnforcerApiClient().post<BaseResponse>('auth/login', {
+      email,
+      ...(tenantCode ? { tenant_code: tenantCode } : {}),
+    })
   }
 
-  const verifyOtp = async (email: string, otp: string) => {
+  const verifyOtp = async (email: string, otp: string, tenantCode?: string) => {
     const res = await getEnforcerApiClient().post<VerifyAuthResponse>(
-      '/api/v1/enforcer/auth/login/verify',
-      { email, otp }
+      'auth/login/verify',
+      {
+        email,
+        otp,
+        ...(tenantCode ? { tenant_code: tenantCode } : {}),
+      }
     )
     const token = res.data.token
     tokenStorage.setToken(token)
@@ -79,6 +109,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })
   }
 
+  const apiKeyLogin = async (apiKey: string) => {
+    apiKeyStorage.set(apiKey)
+    const res = await getEnforcerApiClient().get<BaseResponse & { data: PublicAccount }>('users/me')
+    setState({
+      ready: true,
+      authenticated: true,
+      account: res.data,
+      claims: null,
+      activeTenantId: res.data.tenant_id ?? null,
+    })
+  }
+
   const setActiveTenant = (tenantId: string) => {
     setState((s) => ({ ...s, activeTenantId: tenantId }))
     localStorage.setItem('ardis_admin_active_tenant', tenantId)
@@ -86,12 +128,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = () => {
     tokenStorage.clear()
+    apiKeyStorage.clear()
     localStorage.removeItem('ardis_admin_active_tenant')
     setState({ ready: true, authenticated: false, account: null, claims: null, activeTenantId: null })
   }
 
   return (
-    <AuthContext.Provider value={{ ...state, sendOtp, verifyOtp, setActiveTenant, logout }}>
+    <AuthContext.Provider value={{ ...state, sendOtp, verifyOtp, apiKeyLogin, setActiveTenant, logout }}>
       {children}
     </AuthContext.Provider>
   )

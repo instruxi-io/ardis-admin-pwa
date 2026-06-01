@@ -42,7 +42,7 @@ export default function SessionsPage() {
     queryKey: ['admin', 'sessions', params, activeTenantId],
     queryFn: () =>
       getEnforcerApiClient().get<PaginatedResponse<AdminSession>>(
-        '/api/v1/enforcer/admin/sessions',
+        'admin/sessions',
         params as Record<string, unknown>
       ),
     refetchInterval: 30_000,

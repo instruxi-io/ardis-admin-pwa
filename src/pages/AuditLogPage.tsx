@@ -35,7 +35,7 @@ export default function AuditLogPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['messages', 'audit', page, activeTenantId],
     queryFn: () =>
-      getEnforcerApiClient().get<AuditResponse>('/api/v1/enforcer/messages/audit', {
+      getEnforcerApiClient().get<AuditResponse>('messages/audit', {
         limit: PAGE_SIZE,
         offset: page * PAGE_SIZE,
       }),
@@ -45,7 +45,7 @@ export default function AuditLogPage() {
   const statsQuery = useQuery({
     queryKey: ['messages', 'stats', activeTenantId],
     queryFn: () =>
-      getEnforcerApiClient().get<{ success: boolean; data: Record<string, number> }>('/api/v1/enforcer/messages/stats'),
+      getEnforcerApiClient().get<{ success: boolean; data: Record<string, number> }>('messages/stats'),
     refetchInterval: 60_000,
   })
 
