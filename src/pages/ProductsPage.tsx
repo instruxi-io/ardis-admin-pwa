@@ -11,6 +11,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
+import {
+  OrderSchemaBuilder, RawToggle,
+  type OrderField,
+  orderFieldsToSchemas, schemasToOrderFields,
+  ORDER_TEMPLATES,
+} from '@/components/ui/schema-builder'
 
 const productSchema = z.object({
   id: z.string().min(1, 'Required').regex(/^[a-z0-9-]+$/, 'Lowercase, numbers, hyphens only'),
@@ -19,10 +25,8 @@ const productSchema = z.object({
   verifier_name: z.string().min(1, 'Required'),
   verifier_id: z.string().min(1, 'Required').regex(/^[a-z0-9-]+$/, 'Lowercase, numbers, hyphens only'),
   price_one_time: z.string().optional().refine(v => !v || !isNaN(Number(v)), 'Must be a number'),
-  currency: z.string().default('USD'),
+  currency: z.string().optional(),
   schema_version: z.string().optional(),
-  order_schema: z.string().refine(v => { try { JSON.parse(v); return true } catch { return false } }, 'Must be valid JSON'),
-  order_ui_schema: z.string().refine(v => { try { JSON.parse(v); return true } catch { return false } }, 'Must be valid JSON'),
 })
 
 type ProductFormValues = z.infer<typeof productSchema>
@@ -30,6 +34,9 @@ type ProductFormValues = z.infer<typeof productSchema>
 export default function ProductsPage() {
   const [showForm, setShowForm] = useState(false)
   const [editProduct, setEditProduct] = useState<ProductEntry | null>(null)
+  const [orderFields, setOrderFields] = useState<OrderField[]>([])
+  const [rawOrderSchema, setRawOrderSchema] = useState('{}')
+  const [rawOrderUiSchema, setRawOrderUiSchema] = useState('{}')
   const queryClient = useQueryClient()
 
   const { data: products = [], isLoading } = useQuery({
@@ -60,7 +67,7 @@ export default function ProductsPage() {
 
   const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<ProductFormValues>({
     resolver: zodResolver(productSchema),
-    defaultValues: { currency: 'USD', order_schema: '{}', order_ui_schema: '{}' },
+    defaultValues: { currency: 'USD' },
   })
 
   const openEdit = (p: ProductEntry) => {
@@ -73,12 +80,36 @@ export default function ProductsPage() {
     setValue('price_one_time', p.price_one_time != null ? String(p.price_one_time) : '')
     setValue('currency', p.currency ?? 'USD')
     setValue('schema_version', p.schema_version ?? '')
-    setValue('order_schema', JSON.stringify(p.order_schema ?? {}, null, 2))
-    setValue('order_ui_schema', JSON.stringify(p.order_ui_schema ?? {}, null, 2))
+    const parsed = schemasToOrderFields(p.order_schema ?? {}, p.order_ui_schema ?? {})
+    setOrderFields(parsed)
+    setRawOrderSchema(JSON.stringify(p.order_schema ?? {}, null, 2))
+    setRawOrderUiSchema(JSON.stringify(p.order_ui_schema ?? {}, null, 2))
     setShowForm(true)
   }
 
+  const applyTemplate = (name: string) => {
+    const t = ORDER_TEMPLATES[name]
+    if (t) setOrderFields(t)
+  }
+
   const onSubmit = (values: ProductFormValues) => {
+    let orderSchema: Record<string, unknown>
+    let orderUiSchema: Record<string, unknown>
+    try {
+      // Try visual builder first; fall back to raw if fields are empty
+      if (orderFields.some(f => f.key)) {
+        const built = orderFieldsToSchemas(orderFields)
+        orderSchema = built.orderSchema
+        orderUiSchema = built.orderUiSchema
+      } else {
+        orderSchema = JSON.parse(rawOrderSchema)
+        orderUiSchema = JSON.parse(rawOrderUiSchema)
+      }
+    } catch {
+      toast.error('Order schema JSON is invalid')
+      return
+    }
+
     const product: ProductEntry = {
       ...editProduct,
       id: values.id,
@@ -88,15 +119,15 @@ export default function ProductsPage() {
       verifier_id: values.verifier_id,
       currency: values.currency || 'USD',
       active: true,
-      order_schema: JSON.parse(values.order_schema),
-      order_ui_schema: JSON.parse(values.order_ui_schema),
+      order_schema: orderSchema,
+      order_ui_schema: orderUiSchema,
       ...(values.price_one_time ? { price_one_time: Number(values.price_one_time) } : {}),
       ...(values.schema_version ? { schema_version: values.schema_version } : {}),
     }
     publishMutation.mutate(product)
   }
 
-  const cancelForm = () => { setShowForm(false); setEditProduct(null); reset() }
+  const cancelForm = () => { setShowForm(false); setEditProduct(null); reset(); setOrderFields([]) }
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -150,14 +181,26 @@ export default function ProductsPage() {
                   <Input {...register('schema_version')} placeholder="clear-health/v1" className="font-mono text-sm" />
                 </Field>
               </div>
-              <Field label="Order Schema (JSON Schema — fields user fills in)" error={errors.order_schema?.message}>
-                <textarea {...register('order_schema')} rows={6}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-1 focus:ring-ring" />
-              </Field>
-              <Field label="Order UI Schema (ui:order, ui:placeholder, ui:help)" error={errors.order_ui_schema?.message}>
-                <textarea {...register('order_ui_schema')} rows={4}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-1 focus:ring-ring" />
-              </Field>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-muted-foreground">Order Form Fields</label>
+                  <div className="flex gap-1">
+                    {Object.keys(ORDER_TEMPLATES).map(t => (
+                      <button key={t} type="button" onClick={() => applyTemplate(t)}
+                        className="text-xs px-2 py-0.5 rounded border border-border text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors">
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <RawToggle
+                  label=""
+                  rawValue={`${rawOrderSchema}\n\n// UI Schema:\n${rawOrderUiSchema}`}
+                  onRawChange={() => {}}
+                >
+                  <OrderSchemaBuilder fields={orderFields} onChange={setOrderFields} />
+                </RawToggle>
+              </div>
               <div className="flex gap-3 pt-1">
                 <Button type="submit" size="sm" disabled={publishMutation.isPending}>
                   {publishMutation.isPending ? 'Publishing…' : editProduct ? 'Update' : 'Publish'}
