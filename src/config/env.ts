@@ -6,5 +6,6 @@ const required = (key: string): string => {
 
 export const env = {
   ENFORCER_BASE_URL: required('VITE_ENFORCER_BASE_URL'),
+  ARDIS_MS_URL: required('VITE_ARDIS_MS_URL'),
   APP_ENV: (import.meta.env.VITE_APP_ENV as string) ?? 'production',
 }
