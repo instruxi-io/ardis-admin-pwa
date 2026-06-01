@@ -8,6 +8,7 @@ import {
   FileText,
   LogOut,
   Building2,
+  Layers,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
@@ -20,6 +21,7 @@ const navItems = [
   { to: '/sessions', icon: ShieldCheck, label: 'Sessions' },
   { to: '/audit', icon: ScrollText, label: 'Audit Log' },
   { to: '/terms', icon: FileText, label: 'Terms' },
+  { to: '/schemas', icon: Layers, label: 'Schemas' },
 ]
 
 export function Sidebar() {
