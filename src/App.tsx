@@ -16,6 +16,7 @@ import SessionsPage from '@/pages/SessionsPage'
 import AuditLogPage from '@/pages/AuditLogPage'
 import TermsPage from '@/pages/TermsPage'
 import SchemasPage from '@/pages/SchemasPage'
+import ProductsPage from '@/pages/ProductsPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -58,6 +59,7 @@ export default function App() {
                 <Route path="/audit" element={<AuditLogPage />} />
                 <Route path="/terms" element={<TermsPage />} />
                 <Route path="/schemas" element={<SchemasPage />} />
+                <Route path="/products" element={<ProductsPage />} />
               </Route>
               <Route path="*" element={<Navigate to="/login" replace />} />
             </Routes>

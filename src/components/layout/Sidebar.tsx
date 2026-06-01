@@ -9,6 +9,7 @@ import {
   LogOut,
   Building2,
   Layers,
+  Package,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
@@ -21,6 +22,7 @@ const navItems = [
   { to: '/sessions', icon: ShieldCheck, label: 'Sessions' },
   { to: '/audit', icon: ScrollText, label: 'Audit Log' },
   { to: '/terms', icon: FileText, label: 'Terms' },
+  { to: '/products', icon: Package, label: 'Products' },
   { to: '/schemas', icon: Layers, label: 'Schemas' },
 ]
 
