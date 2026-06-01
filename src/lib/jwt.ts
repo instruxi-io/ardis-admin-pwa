@@ -18,6 +18,7 @@ export function isTokenExpired(token: string): boolean {
 
 const TOKEN_KEY = 'ardis_admin_token'
 const REFRESH_KEY = 'ardis_admin_refresh'
+const API_KEY_KEY = 'ardis_admin_api_key'
 
 export const tokenStorage = {
   getToken: () => localStorage.getItem(TOKEN_KEY),
@@ -27,5 +28,12 @@ export const tokenStorage = {
   clear: () => {
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(REFRESH_KEY)
+    localStorage.removeItem(API_KEY_KEY)
   },
+}
+
+export const apiKeyStorage = {
+  get: () => localStorage.getItem(API_KEY_KEY),
+  set: (k: string) => localStorage.setItem(API_KEY_KEY, k),
+  clear: () => localStorage.removeItem(API_KEY_KEY),
 }

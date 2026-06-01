@@ -18,7 +18,7 @@ export default function UserDetailPage() {
   const userQuery = useQuery({
     queryKey: ['admin', 'users', id],
     queryFn: () =>
-      getEnforcerApiClient().get<{ success: boolean; data: UserListItem }>(`/api/v1/enforcer/admin/users/${id}`),
+      getEnforcerApiClient().get<{ success: boolean; data: UserListItem }>(`admin/users/${id}`),
     enabled: !!id,
   })
 
@@ -26,27 +26,27 @@ export default function UserDetailPage() {
     queryKey: ['admin', 'users', id, 'sessions'],
     queryFn: () =>
       getEnforcerApiClient().get<PaginatedResponse<AdminSession>>(
-        `/api/v1/enforcer/admin/users/${id}/sessions`,
+        `admin/users/${id}/sessions`,
         { limit: 10 } as Record<string, unknown>
       ),
     enabled: !!id,
   })
 
   const activateMutation = useMutation({
-    mutationFn: () => getEnforcerApiClient().put<BaseResponse>(`/api/v1/enforcer/admin/users/${id}/activate`),
+    mutationFn: () => getEnforcerApiClient().put<BaseResponse>(`admin/users/${id}/activate`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin', 'users', id] }); toast.success('User activated') },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed'),
   })
 
   const deactivateMutation = useMutation({
-    mutationFn: () => getEnforcerApiClient().put<BaseResponse>(`/api/v1/enforcer/admin/users/${id}/deactivate`),
+    mutationFn: () => getEnforcerApiClient().put<BaseResponse>(`admin/users/${id}/deactivate`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin', 'users', id] }); toast.success('User deactivated') },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed'),
   })
 
   const verifyContactMutation = useMutation({
     mutationFn: () =>
-      getEnforcerApiClient().post<BaseResponse>('/api/v1/enforcer/admin/users/verify-contact', {
+      getEnforcerApiClient().post<BaseResponse>('admin/users/verify-contact', {
         user_id: id,
         email_verified: true,
       }),

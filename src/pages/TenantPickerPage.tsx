@@ -15,7 +15,7 @@ export default function TenantPickerPage() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['admin', 'tenants'],
     queryFn: () =>
-      getEnforcerApiClient().get<PaginatedResponse<AdminTenant>>('/api/v1/enforcer/admin/tenants', { limit: 100 }),
+      getEnforcerApiClient().get<PaginatedResponse<AdminTenant>>('admin/tenants', { limit: 100 }),
   })
 
   const handlePick = (tenant: AdminTenant) => {
