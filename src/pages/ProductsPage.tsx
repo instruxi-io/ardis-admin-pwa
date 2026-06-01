@@ -1,0 +1,254 @@
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { toast } from 'sonner'
+import { Plus, ChevronDown, ChevronUp, Package, Trash2, X } from 'lucide-react'
+import { productsApi, type ProductEntry } from '@/lib/ardisMsClient'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { format } from 'date-fns'
+
+const productSchema = z.object({
+  id: z.string().min(1, 'Required').regex(/^[a-z0-9-]+$/, 'Lowercase, numbers, hyphens only'),
+  name: z.string().min(1, 'Required'),
+  description: z.string().optional(),
+  verifier_name: z.string().min(1, 'Required'),
+  verifier_id: z.string().min(1, 'Required').regex(/^[a-z0-9-]+$/, 'Lowercase, numbers, hyphens only'),
+  price_one_time: z.string().optional().refine(v => !v || !isNaN(Number(v)), 'Must be a number'),
+  currency: z.string().default('USD'),
+  schema_version: z.string().optional(),
+  order_schema: z.string().refine(v => { try { JSON.parse(v); return true } catch { return false } }, 'Must be valid JSON'),
+  order_ui_schema: z.string().refine(v => { try { JSON.parse(v); return true } catch { return false } }, 'Must be valid JSON'),
+})
+
+type ProductFormValues = z.infer<typeof productSchema>
+
+export default function ProductsPage() {
+  const [showForm, setShowForm] = useState(false)
+  const [editProduct, setEditProduct] = useState<ProductEntry | null>(null)
+  const queryClient = useQueryClient()
+
+  const { data: products = [], isLoading } = useQuery({
+    queryKey: ['products'],
+    queryFn: productsApi.list,
+  })
+
+  const publishMutation = useMutation({
+    mutationFn: (product: ProductEntry) => productsApi.publish(product),
+    onSuccess: (p) => {
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+      toast.success(`Published ${p.name}`)
+      setShowForm(false)
+      setEditProduct(null)
+      reset()
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'Publish failed'),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => productsApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+      toast.success('Product removed')
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'Delete failed'),
+  })
+
+  const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<ProductFormValues>({
+    resolver: zodResolver(productSchema),
+    defaultValues: { currency: 'USD', order_schema: '{}', order_ui_schema: '{}' },
+  })
+
+  const openEdit = (p: ProductEntry) => {
+    setEditProduct(p)
+    setValue('id', p.id)
+    setValue('name', p.name)
+    setValue('description', p.description ?? '')
+    setValue('verifier_name', p.verifier_name ?? '')
+    setValue('verifier_id', p.verifier_id ?? '')
+    setValue('price_one_time', p.price_one_time != null ? String(p.price_one_time) : '')
+    setValue('currency', p.currency ?? 'USD')
+    setValue('schema_version', p.schema_version ?? '')
+    setValue('order_schema', JSON.stringify(p.order_schema ?? {}, null, 2))
+    setValue('order_ui_schema', JSON.stringify(p.order_ui_schema ?? {}, null, 2))
+    setShowForm(true)
+  }
+
+  const onSubmit = (values: ProductFormValues) => {
+    const product: ProductEntry = {
+      ...editProduct,
+      id: values.id,
+      name: values.name,
+      description: values.description,
+      verifier_name: values.verifier_name,
+      verifier_id: values.verifier_id,
+      currency: values.currency || 'USD',
+      active: true,
+      order_schema: JSON.parse(values.order_schema),
+      order_ui_schema: JSON.parse(values.order_ui_schema),
+      ...(values.price_one_time ? { price_one_time: Number(values.price_one_time) } : {}),
+      ...(values.schema_version ? { schema_version: values.schema_version } : {}),
+    }
+    publishMutation.mutate(product)
+  }
+
+  const cancelForm = () => { setShowForm(false); setEditProduct(null); reset() }
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Products</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Dynamic product catalogue — VPs manage their own products and pricing.
+          </p>
+        </div>
+        <Button onClick={() => showForm ? cancelForm() : setShowForm(true)} size="sm">
+          {showForm ? <X size={14} className="mr-1.5" /> : <Plus size={14} className="mr-1.5" />}
+          {showForm ? 'Cancel' : 'New Product'}
+        </Button>
+      </div>
+
+      {showForm && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">{editProduct ? `Editing ${editProduct.name}` : 'Publish New Product'}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Product ID" error={errors.id?.message}>
+                  <Input {...register('id')} placeholder="medical-license-check" className="font-mono text-sm" disabled={!!editProduct} />
+                </Field>
+                <Field label="Name" error={errors.name?.message}>
+                  <Input {...register('name')} placeholder="Medical License Verification" />
+                </Field>
+              </div>
+              <Field label="Description" error={errors.description?.message}>
+                <Input {...register('description')} placeholder="Primary-source verification of active medical licenses" />
+              </Field>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Verifier Name" error={errors.verifier_name?.message}>
+                  <Input {...register('verifier_name')} placeholder="CLEAR Health" />
+                </Field>
+                <Field label="Verifier ID" error={errors.verifier_id?.message}>
+                  <Input {...register('verifier_id')} placeholder="clear-health" className="font-mono text-sm" />
+                </Field>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <Field label="One-Time Price ($)" error={errors.price_one_time?.message}>
+                  <Input {...register('price_one_time')} placeholder="29.99" type="number" step="0.01" />
+                </Field>
+                <Field label="Currency" error={errors.currency?.message}>
+                  <Input {...register('currency')} placeholder="USD" />
+                </Field>
+                <Field label="Schema Version" error={errors.schema_version?.message}>
+                  <Input {...register('schema_version')} placeholder="clear-health/v1" className="font-mono text-sm" />
+                </Field>
+              </div>
+              <Field label="Order Schema (JSON Schema — fields user fills in)" error={errors.order_schema?.message}>
+                <textarea {...register('order_schema')} rows={6}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-1 focus:ring-ring" />
+              </Field>
+              <Field label="Order UI Schema (ui:order, ui:placeholder, ui:help)" error={errors.order_ui_schema?.message}>
+                <textarea {...register('order_ui_schema')} rows={4}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-1 focus:ring-ring" />
+              </Field>
+              <div className="flex gap-3 pt-1">
+                <Button type="submit" size="sm" disabled={publishMutation.isPending}>
+                  {publishMutation.isPending ? 'Publishing…' : editProduct ? 'Update' : 'Publish'}
+                </Button>
+                <Button type="button" variant="ghost" size="sm" onClick={cancelForm}>Cancel</Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader className="py-4">
+          <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+            <Package size={14} />
+            {isLoading ? 'Loading…' : `${products.length} product${products.length !== 1 ? 's' : ''}`}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {isLoading && <p className="text-sm text-muted-foreground text-center py-8">Loading…</p>}
+          {!isLoading && products.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-8">No products yet. Click "New Product" to add the first one.</p>
+          )}
+          {products.map(p => <ProductRow key={p.id} product={p} onEdit={openEdit} onDelete={id => deleteMutation.mutate(id)} deleting={deleteMutation.isPending} />)}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+function ProductRow({ product, onEdit, onDelete, deleting }: {
+  product: ProductEntry
+  onEdit: (p: ProductEntry) => void
+  onDelete: (id: string) => void
+  deleting: boolean
+}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div className="border-b border-border last:border-0">
+      <div className="flex items-center justify-between px-6 py-3 hover:bg-muted/30 transition-colors">
+        <div className="flex items-center gap-3 min-w-0">
+          <button onClick={() => setOpen(v => !v)} className="flex items-center gap-3 text-left min-w-0">
+            {open ? <ChevronUp size={14} className="shrink-0 text-muted-foreground" /> : <ChevronDown size={14} className="shrink-0 text-muted-foreground" />}
+            <div className="min-w-0">
+              <p className="text-sm font-medium truncate">{product.name}</p>
+              <p className="text-xs text-muted-foreground font-mono">{product.id}</p>
+            </div>
+          </button>
+          <Badge variant="outline" className="text-xs shrink-0">{product.verifier_name}</Badge>
+          {product.price_one_time != null && (
+            <Badge variant="secondary" className="text-xs shrink-0">${product.price_one_time.toFixed(2)}</Badge>
+          )}
+          {!product.active && <Badge variant="destructive" className="text-xs">Inactive</Badge>}
+        </div>
+        <div className="flex items-center gap-2 ml-4">
+          {product.published_at && (
+            <span className="text-xs text-muted-foreground hidden sm:block">
+              {format(new Date(product.published_at), 'MMM d, yyyy')}
+            </span>
+          )}
+          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary" onClick={() => onEdit(product)}>
+            Edit
+          </Button>
+          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => onDelete(product.id!)} disabled={deleting}>
+            <Trash2 size={14} />
+          </Button>
+        </div>
+      </div>
+      {open && (
+        <div className="px-12 pb-4 space-y-2 text-xs text-muted-foreground">
+          {product.description && <p>{product.description}</p>}
+          {product.schema_version && <p>Display schema: <span className="font-mono">{product.schema_version}</span></p>}
+          {product.order_schema && (
+            <details>
+              <summary className="cursor-pointer hover:text-foreground">Order schema</summary>
+              <pre className="mt-1 text-xs bg-muted rounded p-2 overflow-x-auto">{JSON.stringify(product.order_schema, null, 2)}</pre>
+            </details>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1">
+      <label className="text-xs font-medium text-muted-foreground">{label}</label>
+      {children}
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
+  )
+}

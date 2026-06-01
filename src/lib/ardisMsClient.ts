@@ -42,6 +42,42 @@ export interface PublishSchemaPayload {
   ui_schema: Record<string, unknown>
 }
 
+export interface ProductEntry {
+  id: string
+  name: string
+  description?: string
+  verifier_name?: string
+  verifier_id?: string
+  verifier_logo_url?: string
+  price_one_time?: number
+  price_monthly?: number
+  currency?: string
+  active?: boolean
+  order_schema?: Record<string, unknown>
+  order_ui_schema?: Record<string, unknown>
+  credential_data_schema?: Record<string, unknown>
+  credential_ui_schema?: Record<string, unknown>
+  schema_version?: string
+  published_at?: string
+  published_by?: string
+}
+
+export const productsApi = {
+  list: async (): Promise<ProductEntry[]> => {
+    const res = await ardisMsClient.get<{ success: boolean; data: ProductEntry[] }>('/public/products')
+    return res.data.data ?? []
+  },
+
+  publish: async (product: ProductEntry): Promise<ProductEntry> => {
+    const res = await ardisMsClient.post<{ success: boolean; data: ProductEntry }>('/products', product)
+    return res.data.data
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await ardisMsClient.delete(`/products/${id}`)
+  },
+}
+
 export const schemasApi = {
   list: async (): Promise<SchemaIndexEntry[]> => {
     const res = await ardisMsClient.get<SchemaListResponse>('/schemas')
