@@ -11,19 +11,18 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
+import {
+  DisplaySchemaBuilder, RawToggle,
+  type DisplayField, type DisplayGroup,
+  displayFieldsToSchemas,
+  DISPLAY_TEMPLATES,
+} from '@/components/ui/schema-builder'
 
 // ── Form schema ───────────────────────────────────────────────────────────────
 
 const publishSchema = z.object({
   verifier_id: z.string().min(1, 'Required').regex(/^[a-z0-9-]+$/, 'Lowercase, numbers, hyphens only'),
   version: z.string().min(1, 'Required').regex(/^v\d+$/, 'Must be vN (e.g. v1, v2)'),
-  data_schema: z.string().min(2, 'Required').refine((v) => {
-    try { JSON.parse(v); return true } catch { return false }
-  }, 'Must be valid JSON'),
-  ui_schema: z.string().refine((v) => {
-    if (!v.trim()) return true
-    try { JSON.parse(v); return true } catch { return false }
-  }, 'Must be valid JSON or empty'),
 })
 
 type PublishFormValues = z.infer<typeof publishSchema>
@@ -32,6 +31,10 @@ type PublishFormValues = z.infer<typeof publishSchema>
 
 export default function SchemasPage() {
   const [showForm, setShowForm] = useState(false)
+  const [displayFields, setDisplayFields] = useState<DisplayField[]>([])
+  const [displayGroups, setDisplayGroups] = useState<DisplayGroup[]>([])
+  const [rawDataSchema] = useState('{}')
+  const [rawUiSchema] = useState('{}')
   const queryClient = useQueryClient()
 
   const { data: schemas = [], isLoading } = useQuery({
@@ -45,6 +48,8 @@ export default function SchemasPage() {
       queryClient.invalidateQueries({ queryKey: ['schemas'] })
       toast.success(`Published ${entry.verifier_id}/${entry.version}`)
       setShowForm(false)
+      setDisplayFields([])
+      setDisplayGroups([])
       reset()
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Publish failed'),
@@ -52,15 +57,34 @@ export default function SchemasPage() {
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<PublishFormValues>({
     resolver: zodResolver(publishSchema),
-    defaultValues: { ui_schema: '{}' },
   })
 
+  const applyTemplate = (name: string) => {
+    const t = DISPLAY_TEMPLATES[name]
+    if (t) { setDisplayFields(t.fields); setDisplayGroups(t.groups) }
+  }
+
   const onSubmit = (values: PublishFormValues) => {
+    let dataSchema: Record<string, unknown>
+    let uiSchema: Record<string, unknown>
+    try {
+      if (displayFields.some(f => f.key)) {
+        const built = displayFieldsToSchemas(displayFields, displayGroups)
+        dataSchema = built.dataSchema
+        uiSchema = built.uiSchema
+      } else {
+        dataSchema = JSON.parse(rawDataSchema)
+        uiSchema = JSON.parse(rawUiSchema)
+      }
+    } catch {
+      toast.error('Schema JSON is invalid')
+      return
+    }
     publishMutation.mutate({
       verifier_id: values.verifier_id,
       version: values.version,
-      data_schema: JSON.parse(values.data_schema),
-      ui_schema: values.ui_schema.trim() ? JSON.parse(values.ui_schema) : {},
+      data_schema: dataSchema,
+      ui_schema: uiSchema,
     })
   }
 
@@ -120,34 +144,30 @@ export default function SchemasPage() {
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground">
-                  Data Schema <span className="text-muted-foreground/60">(JSON Schema — field types, rules)</span>
-                </label>
-                <textarea
-                  {...register('data_schema')}
-                  rows={8}
-                  placeholder='{"type":"object","properties":{"license_number":{"type":"string","title":"License Number"}}}'
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-1 focus:ring-ring"
-                />
-                {errors.data_schema && (
-                  <p className="text-xs text-destructive">{errors.data_schema.message}</p>
-                )}
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground">
-                  UI Schema <span className="text-muted-foreground/60">(optional — field order, labels, widgets)</span>
-                </label>
-                <textarea
-                  {...register('ui_schema')}
-                  rows={4}
-                  placeholder='{}'
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-1 focus:ring-ring"
-                />
-                {errors.ui_schema && (
-                  <p className="text-xs text-destructive">{errors.ui_schema.message}</p>
-                )}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-muted-foreground">Display Fields &amp; Groups</label>
+                  <div className="flex gap-1">
+                    {Object.keys(DISPLAY_TEMPLATES).map(t => (
+                      <button key={t} type="button" onClick={() => applyTemplate(t)}
+                        className="text-xs px-2 py-0.5 rounded border border-border text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors">
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <RawToggle
+                  label=""
+                  rawValue={`${rawDataSchema}\n\n// UI Schema:\n${rawUiSchema}`}
+                  onRawChange={() => {}}
+                >
+                  <DisplaySchemaBuilder
+                    fields={displayFields}
+                    groups={displayGroups}
+                    onFieldsChange={setDisplayFields}
+                    onGroupsChange={setDisplayGroups}
+                  />
+                </RawToggle>
               </div>
 
               <div className="flex items-center gap-3 pt-1">
