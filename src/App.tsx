@@ -50,6 +50,7 @@ export default function App() {
                   </ProtectedRoute>
                 }
               >
+                <Route index element={<Navigate to="/products" replace />} />
                 <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/users" element={<UsersPage />} />
                 <Route path="/users/:id" element={<UserDetailPage />} />

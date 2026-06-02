@@ -1,11 +1,5 @@
 import { NavLink } from 'react-router-dom'
 import {
-  LayoutDashboard,
-  Users,
-  FolderOpen,
-  ShieldCheck,
-  ScrollText,
-  FileText,
   LogOut,
   Building2,
   Layers,
@@ -16,12 +10,6 @@ import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
 
 const navItems = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/users', icon: Users, label: 'Users' },
-  { to: '/groups', icon: FolderOpen, label: 'Groups' },
-  { to: '/sessions', icon: ShieldCheck, label: 'Sessions' },
-  { to: '/audit', icon: ScrollText, label: 'Audit Log' },
-  { to: '/terms', icon: FileText, label: 'Terms' },
   { to: '/products', icon: Package, label: 'Products' },
   { to: '/schemas', icon: Layers, label: 'Schemas' },
 ]

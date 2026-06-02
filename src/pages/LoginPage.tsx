@@ -28,7 +28,7 @@ export default function LoginPage() {
 
   if (authenticated) {
     const role = claims?.role ?? account?.role
-    const dest = role === 'admin' ? '/tenants' : '/dashboard'
+    const dest = role === 'admin' ? '/tenants' : '/products'
     return <Navigate to={dest} replace />
   }
 
