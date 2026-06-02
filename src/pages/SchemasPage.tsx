@@ -223,6 +223,7 @@ function VerifierGroup({
   versions: { version: string; published_at: string; published_by: string }[]
 }) {
   const [open, setOpen] = useState(true)
+  const [expandedVersion, setExpandedVersion] = useState<string | null>(null)
   const latestVersion = versions[0]?.version
 
   return (
@@ -255,27 +256,100 @@ function VerifierGroup({
           </thead>
           <tbody>
             {versions.map((v) => (
-              <tr key={v.version} className="border-t border-border/50">
-                <td className="px-8 py-2.5 font-mono text-sm">{v.version}</td>
-                <td className="px-6 py-2.5 text-sm text-muted-foreground">
-                  {format(new Date(v.published_at), 'MMM d, yyyy HH:mm')}
-                </td>
-                <td className="px-6 py-2.5 text-xs text-muted-foreground font-mono truncate max-w-[180px]">
-                  {v.published_by || '—'}
-                </td>
-                <td className="px-6 py-2.5 text-right">
-                  {v.version === latestVersion && (
-                    <span className="inline-flex items-center gap-1 text-xs text-emerald-500">
-                      <CheckCircle2 size={12} />
-                      latest
-                    </span>
-                  )}
-                </td>
-              </tr>
+              <>
+                <tr
+                  key={v.version}
+                  className="border-t border-border/50 hover:bg-muted/20 cursor-pointer transition-colors"
+                  onClick={() => setExpandedVersion(expandedVersion === v.version ? null : v.version)}
+                >
+                  <td className="px-8 py-2.5 font-mono text-sm">{v.version}</td>
+                  <td className="px-6 py-2.5 text-sm text-muted-foreground">
+                    {format(new Date(v.published_at), 'MMM d, yyyy HH:mm')}
+                  </td>
+                  <td className="px-6 py-2.5 text-xs text-muted-foreground font-mono truncate max-w-[180px]">
+                    {v.published_by || '—'}
+                  </td>
+                  <td className="px-6 py-2.5 text-right">
+                    <div className="flex items-center justify-end gap-3">
+                      {v.version === latestVersion && (
+                        <span className="inline-flex items-center gap-1 text-xs text-emerald-500">
+                          <CheckCircle2 size={12} />
+                          latest
+                        </span>
+                      )}
+                      <span className="text-xs text-muted-foreground">
+                        {expandedVersion === v.version ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+                {expandedVersion === v.version && (
+                  <tr key={`${v.version}-detail`} className="border-t border-border/50 bg-muted/10">
+                    <td colSpan={4} className="px-8 py-4">
+                      <SchemaDetail verifierId={verifierId} version={v.version} />
+                    </td>
+                  </tr>
+                )}
+              </>
             ))}
           </tbody>
         </table>
       )}
     </div>
+  )
+}
+
+// ── Schema detail (fetched on expand) ────────────────────────────────────────
+
+function SchemaDetail({ verifierId, version }: { verifierId: string; version: string }) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['schema-detail', verifierId, version],
+    queryFn: () => schemasApi.get(verifierId, version),
+  })
+
+  if (isLoading) return <p className="text-xs text-muted-foreground">Loading…</p>
+  if (error || !data) return <p className="text-xs text-destructive">Failed to load schema</p>
+
+  const props = (data.data_schema?.properties as Record<string, { title?: string; format?: string }>) ?? {}
+  const order = (data.ui_schema?.['ui:order'] as string[]) ?? Object.keys(props)
+  const groups = (data.ui_schema?.['ui:groups'] as { title: string; fields: string[] }[]) ?? []
+
+  const fieldsByKey: Record<string, { title: string; format?: string }> = {}
+  for (const k of order) {
+    if (props[k]) fieldsByKey[k] = { title: props[k].title ?? k, format: props[k].format }
+  }
+
+  return (
+    <div className="space-y-3">
+      {groups.length > 0 ? (
+        groups.map(g => (
+          <div key={g.title}>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">{g.title}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {g.fields.map(k => (
+                <FieldChip key={k} label={fieldsByKey[k]?.title ?? k} format={fieldsByKey[k]?.format} />
+              ))}
+            </div>
+          </div>
+        ))
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {order.map(k => (
+            <FieldChip key={k} label={fieldsByKey[k]?.title ?? k} format={fieldsByKey[k]?.format} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function FieldChip({ label, format }: { label: string; format?: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-muted border border-border font-mono">
+      {label}
+      {format && format !== 'text' && (
+        <span className="text-muted-foreground/70">{format}</span>
+      )}
+    </span>
   )
 }

@@ -78,10 +78,22 @@ export const productsApi = {
   },
 }
 
+export interface SchemaContent {
+  data_schema: Record<string, unknown>
+  ui_schema: Record<string, unknown>
+}
+
 export const schemasApi = {
   list: async (): Promise<SchemaIndexEntry[]> => {
     const res = await ardisMsClient.get<SchemaListResponse>('/schemas')
     return res.data.data ?? []
+  },
+
+  get: async (verifierId: string, version: string): Promise<SchemaContent> => {
+    const res = await ardisMsClient.get<{ success: boolean; data: SchemaContent }>(
+      `/public/schemas/${verifierId}/${version}`
+    )
+    return res.data.data
   },
 
   publish: async (payload: PublishSchemaPayload): Promise<SchemaIndexEntry> => {
