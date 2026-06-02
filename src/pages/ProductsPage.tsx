@@ -181,22 +181,34 @@ export default function ProductsPage() {
                   <Input {...register('schema_version')} placeholder="clear-health/v1" className="font-mono text-sm" />
                 </Field>
               </div>
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
+              <div className="space-y-2">
+                <div className="space-y-1">
                   <label className="text-xs font-medium text-muted-foreground">Order Form Fields</label>
-                  <div className="flex gap-1">
-                    {Object.keys(ORDER_TEMPLATES).map(t => (
-                      <button key={t} type="button" onClick={() => applyTemplate(t)}
-                        className="text-xs px-2 py-0.5 rounded border border-border text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors">
-                        {t}
-                      </button>
-                    ))}
-                  </div>
+                  <p className="text-xs text-muted-foreground/70">Fields the professional fills in when placing this order.</p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">Quick start:</span>
+                  {Object.keys(ORDER_TEMPLATES).map(t => (
+                    <button key={t} type="button" onClick={() => applyTemplate(t)}
+                      className="text-xs px-2 py-0.5 rounded border border-border text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors">
+                      {t}
+                    </button>
+                  ))}
                 </div>
                 <RawToggle
-                  label=""
-                  rawValue={`${rawOrderSchema}\n\n// UI Schema:\n${rawOrderUiSchema}`}
-                  onRawChange={() => {}}
+                  onSerialize={() => {
+                    const { orderSchema, orderUiSchema } = orderFieldsToSchemas(orderFields)
+                    return JSON.stringify({ order_schema: orderSchema, order_ui_schema: orderUiSchema }, null, 2)
+                  }}
+                  onDeserialize={(raw) => {
+                    try {
+                      const parsed = JSON.parse(raw)
+                      const src = parsed.order_schema ?? parsed
+                      const uiSrc = parsed.order_ui_schema ?? {}
+                      setOrderFields(schemasToOrderFields(src, uiSrc))
+                      return true
+                    } catch { return false }
+                  }}
                 >
                   <OrderSchemaBuilder fields={orderFields} onChange={setOrderFields} />
                 </RawToggle>

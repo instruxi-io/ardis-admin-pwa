@@ -14,7 +14,7 @@ import { format } from 'date-fns'
 import {
   DisplaySchemaBuilder, RawToggle,
   type DisplayField, type DisplayGroup,
-  displayFieldsToSchemas,
+  displayFieldsToSchemas, schemasToDisplayFields,
   DISPLAY_TEMPLATES,
 } from '@/components/ui/schema-builder'
 
@@ -33,8 +33,6 @@ export default function SchemasPage() {
   const [showForm, setShowForm] = useState(false)
   const [displayFields, setDisplayFields] = useState<DisplayField[]>([])
   const [displayGroups, setDisplayGroups] = useState<DisplayGroup[]>([])
-  const [rawDataSchema] = useState('{}')
-  const [rawUiSchema] = useState('{}')
   const queryClient = useQueryClient()
 
   const { data: schemas = [], isLoading } = useQuery({
@@ -73,8 +71,8 @@ export default function SchemasPage() {
         dataSchema = built.dataSchema
         uiSchema = built.uiSchema
       } else {
-        dataSchema = JSON.parse(rawDataSchema)
-        uiSchema = JSON.parse(rawUiSchema)
+        dataSchema = {}
+        uiSchema = {}
       }
     } catch {
       toast.error('Schema JSON is invalid')
@@ -144,22 +142,37 @@ export default function SchemasPage() {
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
+              <div className="space-y-2">
+                <div className="space-y-1">
                   <label className="text-xs font-medium text-muted-foreground">Display Fields &amp; Groups</label>
-                  <div className="flex gap-1">
-                    {Object.keys(DISPLAY_TEMPLATES).map(t => (
-                      <button key={t} type="button" onClick={() => applyTemplate(t)}
-                        className="text-xs px-2 py-0.5 rounded border border-border text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors">
-                        {t}
-                      </button>
-                    ))}
-                  </div>
+                  <p className="text-xs text-muted-foreground/70">Define how the fulfilled credential renders in the vault.</p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">Quick start:</span>
+                  {Object.keys(DISPLAY_TEMPLATES).map(t => (
+                    <button key={t} type="button" onClick={() => applyTemplate(t)}
+                      className="text-xs px-2 py-0.5 rounded border border-border text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors">
+                      {t}
+                    </button>
+                  ))}
                 </div>
                 <RawToggle
-                  label=""
-                  rawValue={`${rawDataSchema}\n\n// UI Schema:\n${rawUiSchema}`}
-                  onRawChange={() => {}}
+                  onSerialize={() => {
+                    const { dataSchema, uiSchema } = displayFieldsToSchemas(displayFields, displayGroups)
+                    return JSON.stringify({ data_schema: dataSchema, ui_schema: uiSchema }, null, 2)
+                  }}
+                  onDeserialize={(raw) => {
+                    try {
+                      const parsed = JSON.parse(raw)
+                      const { fields, groups } = schemasToDisplayFields(
+                        parsed.data_schema ?? parsed,
+                        parsed.ui_schema ?? {}
+                      )
+                      setDisplayFields(fields)
+                      setDisplayGroups(groups)
+                      return true
+                    } catch { return false }
+                  }}
                 >
                   <DisplaySchemaBuilder
                     fields={displayFields}
