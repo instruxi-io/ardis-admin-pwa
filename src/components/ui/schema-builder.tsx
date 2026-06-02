@@ -332,35 +332,59 @@ export function schemasToDisplayFields(dataSchema: Record<string, unknown>, uiSc
 }
 
 // ── Raw JSON toggle wrapper ───────────────────────────────────────────────────
+// Syncs visual ↔ raw at toggle time. onSerialize: serialize visual state to JSON string.
+// onDeserialize: parse raw JSON string and update visual state. Returns false if invalid.
 
 interface RawToggleProps {
   children: React.ReactNode
-  rawValue: string
-  onRawChange: (v: string) => void
-  label: string
+  label?: string
+  onSerialize: () => string
+  onDeserialize: (raw: string) => boolean
 }
 
-export function RawToggle({ children, rawValue, onRawChange, label }: RawToggleProps) {
+export function RawToggle({ children, label, onSerialize, onDeserialize }: RawToggleProps) {
   const [showRaw, setShowRaw] = useState(false)
+  const [rawText, setRawText] = useState('')
+  const [parseError, setParseError] = useState('')
+
+  const switchToRaw = () => {
+    setRawText(onSerialize())
+    setParseError('')
+    setShowRaw(true)
+  }
+
+  const switchToVisual = () => {
+    const ok = onDeserialize(rawText)
+    if (!ok) {
+      setParseError('Invalid JSON — fix before switching back')
+      return
+    }
+    setParseError('')
+    setShowRaw(false)
+  }
+
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
-        <label className="text-xs font-medium text-muted-foreground">{label}</label>
+        {label && <label className="text-xs font-medium text-muted-foreground">{label}</label>}
         <button
           type="button"
-          onClick={() => setShowRaw(v => !v)}
-          className={`flex items-center gap-1 text-xs transition-colors ${showRaw ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+          onClick={showRaw ? switchToVisual : switchToRaw}
+          className={`flex items-center gap-1 text-xs transition-colors ml-auto ${showRaw ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
         >
-          <Code size={12} /> {showRaw ? 'Visual' : 'Raw JSON'}
+          <Code size={12} /> {showRaw ? 'Back to Visual' : 'Raw JSON'}
         </button>
       </div>
       {showRaw ? (
-        <textarea
-          value={rawValue}
-          onChange={e => onRawChange(e.target.value)}
-          rows={6}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-1 focus:ring-ring"
-        />
+        <div className="space-y-1">
+          <textarea
+            value={rawText}
+            onChange={e => { setRawText(e.target.value); setParseError('') }}
+            rows={8}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          {parseError && <p className="text-xs text-destructive">{parseError}</p>}
+        </div>
       ) : (
         children
       )}
