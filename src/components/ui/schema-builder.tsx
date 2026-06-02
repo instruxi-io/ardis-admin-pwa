@@ -335,17 +335,27 @@ export function schemasToDisplayFields(dataSchema: Record<string, unknown>, uiSc
 // Syncs visual ↔ raw at toggle time. onSerialize: serialize visual state to JSON string.
 // onDeserialize: parse raw JSON string and update visual state. Returns false if invalid.
 
+export interface RawToggleRef {
+  getRawText: () => string | null  // null = not in raw mode
+}
+
 interface RawToggleProps {
   children: React.ReactNode
   label?: string
   onSerialize: () => string
   onDeserialize: (raw: string) => boolean
+  toggleRef?: React.MutableRefObject<RawToggleRef | null>
 }
 
-export function RawToggle({ children, label, onSerialize, onDeserialize }: RawToggleProps) {
+export function RawToggle({ children, label, onSerialize, onDeserialize, toggleRef }: RawToggleProps) {
   const [showRaw, setShowRaw] = useState(false)
   const [rawText, setRawText] = useState('')
   const [parseError, setParseError] = useState('')
+
+  // Expose current raw text to parent for submit-time access
+  if (toggleRef) {
+    toggleRef.current = { getRawText: () => showRaw ? rawText : null }
+  }
 
   const switchToRaw = () => {
     setRawText(onSerialize())

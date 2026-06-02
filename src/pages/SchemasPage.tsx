@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
 import {
   DisplaySchemaBuilder, RawToggle,
-  type DisplayField, type DisplayGroup,
+  type DisplayField, type DisplayGroup, type RawToggleRef,
   displayFieldsToSchemas, schemasToDisplayFields,
   DISPLAY_TEMPLATES,
 } from '@/components/ui/schema-builder'
@@ -33,6 +33,7 @@ export default function SchemasPage() {
   const [showForm, setShowForm] = useState(false)
   const [displayFields, setDisplayFields] = useState<DisplayField[]>([])
   const [displayGroups, setDisplayGroups] = useState<DisplayGroup[]>([])
+  const schemaToggleRef = useRef<RawToggleRef | null>(null)
   const queryClient = useQueryClient()
 
   const { data: schemas = [], isLoading } = useQuery({
@@ -66,7 +67,12 @@ export default function SchemasPage() {
     let dataSchema: Record<string, unknown>
     let uiSchema: Record<string, unknown>
     try {
-      if (displayFields.some(f => f.key)) {
+      const rawText = schemaToggleRef.current?.getRawText()
+      if (rawText != null) {
+        const parsed = JSON.parse(rawText)
+        dataSchema = parsed.data_schema ?? parsed
+        uiSchema = parsed.ui_schema ?? {}
+      } else if (displayFields.some(f => f.key)) {
         const built = displayFieldsToSchemas(displayFields, displayGroups)
         dataSchema = built.dataSchema
         uiSchema = built.uiSchema
@@ -157,6 +163,7 @@ export default function SchemasPage() {
                   ))}
                 </div>
                 <RawToggle
+                  toggleRef={schemaToggleRef}
                   onSerialize={() => {
                     const { dataSchema, uiSchema } = displayFieldsToSchemas(displayFields, displayGroups)
                     return JSON.stringify({ data_schema: dataSchema, ui_schema: uiSchema }, null, 2)
