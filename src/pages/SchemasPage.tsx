@@ -54,13 +54,30 @@ export default function SchemasPage() {
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Publish failed'),
   })
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<PublishFormValues>({
+  const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<PublishFormValues>({
     resolver: zodResolver(publishSchema),
   })
 
   const applyTemplate = (name: string) => {
     const t = DISPLAY_TEMPLATES[name]
     if (t) { setDisplayFields(t.fields); setDisplayGroups(t.groups) }
+  }
+
+  const editAsNewVersion = async (verifierId: string, fromVersion: string) => {
+    try {
+      const content = await schemasApi.get(verifierId, fromVersion)
+      const { fields, groups } = schemasToDisplayFields(content.data_schema, content.ui_schema)
+      setDisplayFields(fields)
+      setDisplayGroups(groups)
+      setValue('verifier_id', verifierId)
+      // Bump version: v1 → v2, v2 → v3, etc.
+      const next = fromVersion.replace(/\d+$/, n => String(Number(n) + 1))
+      setValue('version', next)
+      setShowForm(true)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } catch {
+      toast.error('Failed to load schema for editing')
+    }
   }
 
   const onSubmit = (values: PublishFormValues) => {
@@ -225,6 +242,7 @@ export default function SchemasPage() {
               key={verifierId}
               verifierId={verifierId}
               versions={[...versions].sort((a, b) => b.version.localeCompare(a.version))}
+              onNewVersion={(v) => editAsNewVersion(verifierId, v)}
             />
           ))}
         </CardContent>
@@ -238,9 +256,11 @@ export default function SchemasPage() {
 function VerifierGroup({
   verifierId,
   versions,
+  onNewVersion,
 }: {
   verifierId: string
   versions: { version: string; published_at: string; published_by: string }[]
+  onNewVersion: (version: string) => void
 }) {
   const [open, setOpen] = useState(true)
   const [expandedVersion, setExpandedVersion] = useState<string | null>(null)
@@ -296,6 +316,15 @@ function VerifierGroup({
                           <CheckCircle2 size={12} />
                           latest
                         </span>
+                      )}
+                      {v.version === latestVersion && (
+                        <button
+                          type="button"
+                          onClick={e => { e.stopPropagation(); onNewVersion(v.version) }}
+                          className="text-xs text-muted-foreground hover:text-primary transition-colors"
+                        >
+                          New version
+                        </button>
                       )}
                       <span className="text-xs text-muted-foreground">
                         {expandedVersion === v.version ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
