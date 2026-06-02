@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
 import {
   OrderSchemaBuilder, RawToggle,
-  type OrderField,
+  type OrderField, type RawToggleRef,
   orderFieldsToSchemas, schemasToOrderFields,
   ORDER_TEMPLATES,
 } from '@/components/ui/schema-builder'
@@ -35,8 +35,7 @@ export default function ProductsPage() {
   const [showForm, setShowForm] = useState(false)
   const [editProduct, setEditProduct] = useState<ProductEntry | null>(null)
   const [orderFields, setOrderFields] = useState<OrderField[]>([])
-  const [rawOrderSchema, setRawOrderSchema] = useState('{}')
-  const [rawOrderUiSchema, setRawOrderUiSchema] = useState('{}')
+  const orderToggleRef = useRef<RawToggleRef | null>(null)
   const queryClient = useQueryClient()
 
   const { data: products = [], isLoading } = useQuery({
@@ -82,8 +81,6 @@ export default function ProductsPage() {
     setValue('schema_version', p.schema_version ?? '')
     const parsed = schemasToOrderFields(p.order_schema ?? {}, p.order_ui_schema ?? {})
     setOrderFields(parsed)
-    setRawOrderSchema(JSON.stringify(p.order_schema ?? {}, null, 2))
-    setRawOrderUiSchema(JSON.stringify(p.order_ui_schema ?? {}, null, 2))
     setShowForm(true)
   }
 
@@ -96,14 +93,19 @@ export default function ProductsPage() {
     let orderSchema: Record<string, unknown>
     let orderUiSchema: Record<string, unknown>
     try {
-      // Try visual builder first; fall back to raw if fields are empty
-      if (orderFields.some(f => f.key)) {
+      const rawText = orderToggleRef.current?.getRawText()
+      if (rawText != null) {
+        // Still in raw mode — parse directly from the textarea
+        const parsed = JSON.parse(rawText)
+        orderSchema = parsed.order_schema ?? parsed
+        orderUiSchema = parsed.order_ui_schema ?? {}
+      } else if (orderFields.some(f => f.key)) {
         const built = orderFieldsToSchemas(orderFields)
         orderSchema = built.orderSchema
         orderUiSchema = built.orderUiSchema
       } else {
-        orderSchema = JSON.parse(rawOrderSchema)
-        orderUiSchema = JSON.parse(rawOrderUiSchema)
+        orderSchema = {}
+        orderUiSchema = {}
       }
     } catch {
       toast.error('Order schema JSON is invalid')
@@ -196,6 +198,7 @@ export default function ProductsPage() {
                   ))}
                 </div>
                 <RawToggle
+                  toggleRef={orderToggleRef}
                   onSerialize={() => {
                     const { orderSchema, orderUiSchema } = orderFieldsToSchemas(orderFields)
                     return JSON.stringify({ order_schema: orderSchema, order_ui_schema: orderUiSchema }, null, 2)
