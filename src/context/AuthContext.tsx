@@ -20,6 +20,10 @@ interface AuthContextValue extends AuthState {
   apiKeyLogin: (apiKey: string) => Promise<void>
   setActiveTenant: (tenantId: string) => void
   logout: () => void
+  role: string | null
+  username: string | null
+  isDeveloper: boolean
+  isTenantAdmin: boolean
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -47,13 +51,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const token = tokenStorage.getToken()
     if (token && !isTokenExpired(token)) {
       const claims = decodeJwt(token)
-      setState({
-        ready: true,
-        authenticated: true,
-        account: null,
-        claims,
-        activeTenantId: claims?.tenant_id ?? null,
-      })
+      // Fetch full account so username + role name are available for VP scoping.
+      getEnforcerApiClient()
+        .get<BaseResponse & { data: PublicAccount }>('users/me')
+        .then((res) => {
+          setState({
+            ready: true,
+            authenticated: true,
+            account: res.data,
+            claims,
+            activeTenantId: claims?.tenant_id ?? null,
+          })
+        })
+        .catch(() => {
+          setState({
+            ready: true,
+            authenticated: true,
+            account: null,
+            claims,
+            activeTenantId: claims?.tenant_id ?? null,
+          })
+        })
       return
     }
 
@@ -133,8 +151,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setState({ ready: true, authenticated: false, account: null, claims: null, activeTenantId: null })
   }
 
+  // account.role comes back from Enforcer as {id, name} at runtime despite
+  // being typed as string — extract the name safely.
+  const rawRole = state.account?.role
+  const accountRole = rawRole
+    ? typeof rawRole === 'object'
+      ? (rawRole as unknown as { name: string }).name?.toLowerCase() ?? null
+      : (rawRole as string).toLowerCase()
+    : null
+  const role = accountRole ?? state.claims?.role?.toLowerCase() ?? null
+  const username = state.account?.username ?? null
+  const isDeveloper = role === 'developer'
+  const isTenantAdmin = role === 'tenant_admin' || role === 'admin'
+
   return (
-    <AuthContext.Provider value={{ ...state, sendOtp, verifyOtp, apiKeyLogin, setActiveTenant, logout }}>
+    <AuthContext.Provider value={{ ...state, sendOtp, verifyOtp, apiKeyLogin, setActiveTenant, logout, role, username, isDeveloper, isTenantAdmin }}>
       {children}
     </AuthContext.Provider>
   )

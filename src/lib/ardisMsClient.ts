@@ -2,7 +2,7 @@ import axios from 'axios'
 import { env } from '@/config/env'
 import { tokenStorage, apiKeyStorage } from '@/lib/jwt'
 
-// Axios client for ardis-ms authenticated endpoints (/schemas, etc.).
+// Axios client for ardis-ms authenticated endpoints (/credential-schemas, etc.).
 // The same Bearer JWT or X-API-Key that works with Enforcer works here —
 // ardis-ms validates credentials through the same Enforcer auth middleware.
 const ardisMsClient = axios.create({
@@ -24,6 +24,7 @@ ardisMsClient.interceptors.request.use((cfg) => {
 
 export interface SchemaIndexEntry {
   verifier_id: string
+  credential_type: string
   version: string
   published_at: string
   published_by: string
@@ -37,6 +38,7 @@ export interface SchemaListResponse {
 
 export interface PublishSchemaPayload {
   verifier_id: string
+  credential_type: string
   version: string
   data_schema: Record<string, unknown>
   ui_schema: Record<string, unknown>
@@ -64,7 +66,7 @@ export interface ProductEntry {
 
 export const productsApi = {
   list: async (): Promise<ProductEntry[]> => {
-    const res = await ardisMsClient.get<{ success: boolean; data: ProductEntry[] }>('/public/products')
+    const res = await ardisMsClient.get<{ success: boolean; data: ProductEntry[] }>('/products')
     return res.data.data ?? []
   },
 
@@ -85,19 +87,19 @@ export interface SchemaContent {
 
 export const schemasApi = {
   list: async (): Promise<SchemaIndexEntry[]> => {
-    const res = await ardisMsClient.get<SchemaListResponse>('/schemas')
+    const res = await ardisMsClient.get<SchemaListResponse>('/credential-schemas')
     return res.data.data ?? []
   },
 
-  get: async (verifierId: string, version: string): Promise<SchemaContent> => {
+  get: async (verifierId: string, credentialType: string, version: string): Promise<SchemaContent> => {
     const res = await ardisMsClient.get<{ success: boolean; data: SchemaContent }>(
-      `/public/schemas/${verifierId}/${version}`
+      `/public/credential-schemas/${verifierId}/${credentialType}/${version}`
     )
     return res.data.data
   },
 
   publish: async (payload: PublishSchemaPayload): Promise<SchemaIndexEntry> => {
-    const res = await ardisMsClient.post<{ success: boolean; data: SchemaIndexEntry }>('/schemas', payload)
+    const res = await ardisMsClient.post<{ success: boolean; data: SchemaIndexEntry }>('/credential-schemas', payload)
     return res.data.data
   },
 }

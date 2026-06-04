@@ -1,22 +1,23 @@
 import { NavLink } from 'react-router-dom'
-import {
-  LogOut,
-  Building2,
-  Layers,
-  Package,
-} from 'lucide-react'
+import { LogOut, Building2, Layers, Package } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 
 const navItems = [
   { to: '/products', icon: Package, label: 'Products' },
-  { to: '/schemas', icon: Layers, label: 'Schemas' },
+  { to: '/schemas', icon: Layers, label: 'Credential Schemas' },
 ]
 
 export function Sidebar() {
-  const { claims, activeTenantId, logout } = useAuth()
-  const isAdmin = claims?.role === 'admin' || claims?.role === 'tenant_admin'
+  const { account, claims, activeTenantId, role, username, isDeveloper, isTenantAdmin, logout } = useAuth()
+
+  const displayName = account?.first_name && account?.last_name
+    ? `${account.first_name} ${account.last_name}`
+    : account?.username ?? claims?.email ?? 'Admin'
+
+  const roleLabel = isTenantAdmin ? 'Tenant Admin' : isDeveloper ? 'Developer' : role ?? 'User'
 
   return (
     <aside className="flex flex-col h-full w-60 shrink-0 border-r border-sidebar-border bg-sidebar">
@@ -34,7 +35,7 @@ export function Sidebar() {
         </div>
       </div>
 
-      {isAdmin && (
+      {isTenantAdmin && (
         <div className="px-3 py-2 border-b border-sidebar-border">
           <NavLink
             to="/tenants"
@@ -71,12 +72,32 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="px-3 py-3 border-t border-sidebar-border">
-        <div className="px-3 py-2 mb-1">
-          <p className="text-xs text-muted-foreground truncate">{claims?.email ?? 'Admin'}</p>
-          <p className="text-xs text-muted-foreground capitalize">{claims?.role ?? 'admin'}</p>
+      <div className="px-3 py-3 border-t border-sidebar-border space-y-2">
+        <div className="px-3 py-2 rounded-md bg-muted/40 space-y-1">
+          <p className="text-xs font-medium text-sidebar-foreground truncate">{displayName}</p>
+          <Badge
+            variant="outline"
+            className={cn(
+              'text-xs px-1.5 py-0',
+              isTenantAdmin && 'border-purple-400 text-purple-400',
+              isDeveloper && 'border-green-500 text-green-500',
+            )}
+          >
+            {roleLabel}
+          </Badge>
+          {isDeveloper && username && (
+            <p className="text-xs text-muted-foreground pt-0.5">
+              <span className="text-muted-foreground/60">verifier_id: </span>
+              <span className="font-mono">{username}</span>
+            </p>
+          )}
         </div>
-        <Button variant="ghost" size="sm" className="w-full justify-start gap-2 text-muted-foreground hover:text-destructive" onClick={logout}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start gap-2 text-muted-foreground hover:text-destructive"
+          onClick={logout}
+        >
           <LogOut size={14} />
           Sign out
         </Button>
