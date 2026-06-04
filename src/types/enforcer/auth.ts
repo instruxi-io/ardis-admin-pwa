@@ -18,7 +18,8 @@ export interface PublicAccount {
   first_name?: string
   last_name?: string
   tenant_id: string
-  role?: string
+  // Enforcer returns role as an object at runtime despite some paths typing it as string
+  role?: string | { id: string; name: string }
   active: boolean
 }
 

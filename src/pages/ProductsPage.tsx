@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { toast } from 'sonner'
 import { Plus, ChevronDown, ChevronUp, Package, Trash2, X } from 'lucide-react'
 import { productsApi, type ProductEntry } from '@/lib/ardisMsClient'
+import { useAuth } from '@/context/AuthContext'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -32,6 +33,7 @@ const productSchema = z.object({
 type ProductFormValues = z.infer<typeof productSchema>
 
 export default function ProductsPage() {
+  const { isDeveloper, username } = useAuth()
   const [showForm, setShowForm] = useState(false)
   const [editProduct, setEditProduct] = useState<ProductEntry | null>(null)
   const [orderFields, setOrderFields] = useState<OrderField[]>([])
@@ -68,6 +70,10 @@ export default function ProductsPage() {
     resolver: zodResolver(productSchema),
     defaultValues: { currency: 'USD' },
   })
+
+  useEffect(() => {
+    if (isDeveloper && username) setValue('verifier_id', username)
+  }, [isDeveloper, username, setValue])
 
   const openEdit = (p: ProductEntry) => {
     setEditProduct(p)
@@ -169,7 +175,14 @@ export default function ProductsPage() {
                   <Input {...register('verifier_name')} placeholder="CLEAR Health" />
                 </Field>
                 <Field label="Verifier ID" error={errors.verifier_id?.message}>
-                  <Input {...register('verifier_id')} placeholder="clear-health" className="font-mono text-sm" />
+                  <Input
+                    {...register('verifier_id')}
+                    placeholder="clear-health"
+                    className="font-mono text-sm"
+                    disabled={isDeveloper}
+                    title={isDeveloper ? 'Locked to your account username' : undefined}
+                  />
+                  {isDeveloper && <p className="text-xs text-muted-foreground">Locked to your account: <span className="font-mono">{username}</span></p>}
                 </Field>
               </div>
               <div className="grid grid-cols-3 gap-4">

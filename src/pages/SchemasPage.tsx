@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { toast } from 'sonner'
 import { Plus, Database, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react'
 import { schemasApi, type PublishSchemaPayload } from '@/lib/ardisMsClient'
+import { useAuth } from '@/context/AuthContext'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -22,6 +23,7 @@ import {
 
 const publishSchema = z.object({
   verifier_id: z.string().min(1, 'Required').regex(/^[a-z0-9-]+$/, 'Lowercase, numbers, hyphens only'),
+  credential_type: z.string().min(1, 'Required').regex(/^[a-z0-9-]+$/, 'Lowercase, numbers, hyphens only'),
   version: z.string().min(1, 'Required').regex(/^v\d+$/, 'Must be vN (e.g. v1, v2)'),
 })
 
@@ -30,6 +32,7 @@ type PublishFormValues = z.infer<typeof publishSchema>
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function SchemasPage() {
+  const { isDeveloper, username } = useAuth()
   const [showForm, setShowForm] = useState(false)
   const [displayFields, setDisplayFields] = useState<DisplayField[]>([])
   const [displayGroups, setDisplayGroups] = useState<DisplayGroup[]>([])
@@ -45,7 +48,7 @@ export default function SchemasPage() {
     mutationFn: (payload: PublishSchemaPayload) => schemasApi.publish(payload),
     onSuccess: (entry) => {
       queryClient.invalidateQueries({ queryKey: ['schemas'] })
-      toast.success(`Published ${entry.verifier_id}/${entry.version}`)
+      toast.success(`Published ${entry.verifier_id}/${entry.credential_type}/${entry.version}`)
       setShowForm(false)
       setDisplayFields([])
       setDisplayGroups([])
@@ -58,19 +61,23 @@ export default function SchemasPage() {
     resolver: zodResolver(publishSchema),
   })
 
+  useEffect(() => {
+    if (isDeveloper && username) setValue('verifier_id', username)
+  }, [isDeveloper, username, setValue])
+
   const applyTemplate = (name: string) => {
     const t = DISPLAY_TEMPLATES[name]
     if (t) { setDisplayFields(t.fields); setDisplayGroups(t.groups) }
   }
 
-  const editAsNewVersion = async (verifierId: string, fromVersion: string) => {
+  const editAsNewVersion = async (verifierId: string, credentialType: string, fromVersion: string) => {
     try {
-      const content = await schemasApi.get(verifierId, fromVersion)
+      const content = await schemasApi.get(verifierId, credentialType, fromVersion)
       const { fields, groups } = schemasToDisplayFields(content.data_schema, content.ui_schema)
       setDisplayFields(fields)
       setDisplayGroups(groups)
       setValue('verifier_id', verifierId)
-      // Bump version: v1 → v2, v2 → v3, etc.
+      setValue('credential_type', credentialType)
       const next = fromVersion.replace(/\d+$/, n => String(Number(n) + 1))
       setValue('version', next)
       setShowForm(true)
@@ -103,16 +110,18 @@ export default function SchemasPage() {
     }
     publishMutation.mutate({
       verifier_id: values.verifier_id,
+      credential_type: values.credential_type,
       version: values.version,
       data_schema: dataSchema,
       ui_schema: uiSchema,
     })
   }
 
-  // Group schemas by verifier_id
+  // Group schemas by verifier_id/credential_type — each credential type is its own group
   const grouped = schemas.reduce<Record<string, typeof schemas>>((acc, s) => {
-    if (!acc[s.verifier_id]) acc[s.verifier_id] = []
-    acc[s.verifier_id].push(s)
+    const key = `${s.verifier_id}/${s.credential_type}`
+    if (!acc[key]) acc[key] = []
+    acc[key].push(s)
     return acc
   }, {})
 
@@ -140,17 +149,32 @@ export default function SchemasPage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-muted-foreground">Verifier ID</label>
                   <Input
                     {...register('verifier_id')}
                     placeholder="clear-health"
                     className="font-mono text-sm"
+                    disabled={isDeveloper}
+                    title={isDeveloper ? 'Locked to your account username' : undefined}
                   />
                   {errors.verifier_id && (
                     <p className="text-xs text-destructive">{errors.verifier_id.message}</p>
                   )}
+                  {isDeveloper && <p className="text-xs text-muted-foreground">Locked: <span className="font-mono">{username}</span></p>}
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">Credential Type</label>
+                  <Input
+                    {...register('credential_type')}
+                    placeholder="license"
+                    className="font-mono text-sm"
+                  />
+                  {errors.credential_type && (
+                    <p className="text-xs text-destructive">{errors.credential_type.message}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground">e.g. license, compliance</p>
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-muted-foreground">Version</label>
@@ -237,14 +261,18 @@ export default function SchemasPage() {
               No schemas published yet. Click "Publish Schema" to add the first one.
             </p>
           )}
-          {Object.entries(grouped).map(([verifierId, versions]) => (
-            <VerifierGroup
-              key={verifierId}
-              verifierId={verifierId}
-              versions={[...versions].sort((a, b) => b.version.localeCompare(a.version))}
-              onNewVersion={(v) => editAsNewVersion(verifierId, v)}
-            />
-          ))}
+          {Object.entries(grouped).map(([groupKey, versions]) => {
+            const [verifierId, credentialType] = groupKey.split('/')
+            return (
+              <VerifierGroup
+                key={groupKey}
+                verifierId={verifierId}
+                credentialType={credentialType}
+                versions={[...versions].sort((a, b) => b.version.localeCompare(a.version))}
+                onNewVersion={(v) => editAsNewVersion(verifierId, credentialType, v)}
+              />
+            )
+          })}
         </CardContent>
       </Card>
     </div>
@@ -255,10 +283,12 @@ export default function SchemasPage() {
 
 function VerifierGroup({
   verifierId,
+  credentialType,
   versions,
   onNewVersion,
 }: {
   verifierId: string
+  credentialType: string
   versions: { version: string; published_at: string; published_by: string }[]
   onNewVersion: (version: string) => void
 }) {
@@ -274,6 +304,7 @@ function VerifierGroup({
       >
         <div className="flex items-center gap-3">
           <span className="font-mono text-sm font-medium">{verifierId}</span>
+          <Badge variant="secondary" className="text-xs font-mono">{credentialType}</Badge>
           <Badge variant="outline" className="text-xs font-mono">
             latest → {latestVersion}
           </Badge>
@@ -335,7 +366,7 @@ function VerifierGroup({
                 {expandedVersion === v.version && (
                   <tr key={`${v.version}-detail`} className="border-t border-border/50 bg-muted/10">
                     <td colSpan={4} className="px-8 py-4">
-                      <SchemaDetail verifierId={verifierId} version={v.version} />
+                      <SchemaDetail verifierId={verifierId} credentialType={credentialType} version={v.version} />
                     </td>
                   </tr>
                 )}
@@ -350,10 +381,10 @@ function VerifierGroup({
 
 // ── Schema detail (fetched on expand) ────────────────────────────────────────
 
-function SchemaDetail({ verifierId, version }: { verifierId: string; version: string }) {
+function SchemaDetail({ verifierId, credentialType, version }: { verifierId: string; credentialType: string; version: string }) {
   const { data, isLoading, error } = useQuery({
-    queryKey: ['schema-detail', verifierId, version],
-    queryFn: () => schemasApi.get(verifierId, version),
+    queryKey: ['schema-detail', verifierId, credentialType, version],
+    queryFn: () => schemasApi.get(verifierId, credentialType, version),
   })
 
   if (isLoading) return <p className="text-xs text-muted-foreground">Loading…</p>
