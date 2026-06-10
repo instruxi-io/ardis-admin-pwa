@@ -18,6 +18,10 @@ import {
   displayFieldsToSchemas, schemasToDisplayFields,
   DISPLAY_TEMPLATES,
 } from '@/components/ui/schema-builder'
+import { PublishConfirmModal } from '@/components/ui/publish-confirm-modal'
+import { env } from '@/config/env'
+
+const IS_PROD = env.APP_ENV === 'production'
 
 // ── Form schema ───────────────────────────────────────────────────────────────
 
@@ -38,6 +42,7 @@ export default function SchemasPage() {
   const [displayGroups, setDisplayGroups] = useState<DisplayGroup[]>([])
   const schemaToggleRef = useRef<RawToggleRef | null>(null)
   const queryClient = useQueryClient()
+  const [pendingPayload, setPendingPayload] = useState<PublishSchemaPayload | null>(null)
 
   const { data: schemas = [], isLoading } = useQuery({
     queryKey: ['schemas'],
@@ -108,13 +113,18 @@ export default function SchemasPage() {
       toast.error('Schema JSON is invalid')
       return
     }
-    publishMutation.mutate({
+    const payload: PublishSchemaPayload = {
       verifier_id: values.verifier_id,
       credential_type: values.credential_type,
       version: values.version,
       data_schema: dataSchema,
       ui_schema: uiSchema,
-    })
+    }
+    if (IS_PROD) {
+      setPendingPayload(payload)
+    } else {
+      publishMutation.mutate(payload)
+    }
   }
 
   // Group schemas by verifier_id/credential_type — each credential type is its own group
@@ -126,6 +136,15 @@ export default function SchemasPage() {
   }, {})
 
   return (
+    <>
+    <PublishConfirmModal
+      open={!!pendingPayload}
+      action="Publish"
+      confirmText={pendingPayload ? `${pendingPayload.verifier_id}/${pendingPayload.credential_type}/${pendingPayload.version}` : ''}
+      description={pendingPayload ? `Publishing schema ${pendingPayload.verifier_id}/${pendingPayload.credential_type}/${pendingPayload.version} to production.` : ''}
+      onConfirm={() => { if (pendingPayload) { publishMutation.mutate(pendingPayload); setPendingPayload(null) } }}
+      onCancel={() => setPendingPayload(null)}
+    />
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -276,6 +295,7 @@ export default function SchemasPage() {
         </CardContent>
       </Card>
     </div>
+    </>
   )
 }
 
