@@ -18,6 +18,10 @@ import {
   orderFieldsToSchemas, schemasToOrderFields,
   ORDER_TEMPLATES,
 } from '@/components/ui/schema-builder'
+import { PublishConfirmModal } from '@/components/ui/publish-confirm-modal'
+import { env } from '@/config/env'
+
+const IS_PROD = env.APP_ENV === 'production'
 
 const productSchema = z.object({
   id: z.string().min(1, 'Required').regex(/^[a-z0-9-]+$/, 'Lowercase, numbers, hyphens only'),
@@ -39,6 +43,8 @@ export default function ProductsPage() {
   const [orderFields, setOrderFields] = useState<OrderField[]>([])
   const orderToggleRef = useRef<RawToggleRef | null>(null)
   const queryClient = useQueryClient()
+  const [pendingProduct, setPendingProduct] = useState<ProductEntry | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null)
 
   const { data: products = [], isLoading } = useQuery({
     queryKey: ['products'],
@@ -132,12 +138,33 @@ export default function ProductsPage() {
       ...(values.price_one_time ? { price_one_time: Number(values.price_one_time) } : {}),
       ...(values.schema_version ? { schema_version: values.schema_version } : {}),
     }
-    publishMutation.mutate(product)
+    if (IS_PROD) {
+      setPendingProduct(product)
+    } else {
+      publishMutation.mutate(product)
+    }
   }
 
   const cancelForm = () => { setShowForm(false); setEditProduct(null); reset(); setOrderFields([]) }
 
   return (
+    <>
+    <PublishConfirmModal
+      open={!!pendingProduct}
+      action="Publish"
+      confirmText={pendingProduct?.id ?? ''}
+      description={pendingProduct ? `Publishing product "${pendingProduct.name}" (${pendingProduct.id}) to production.` : ''}
+      onConfirm={() => { if (pendingProduct) { publishMutation.mutate(pendingProduct); setPendingProduct(null) } }}
+      onCancel={() => setPendingProduct(null)}
+    />
+    <PublishConfirmModal
+      open={!!pendingDelete}
+      action="Delete"
+      confirmText={pendingDelete ?? ''}
+      description={pendingDelete ? `Permanently deleting product "${pendingDelete}" from production.` : ''}
+      onConfirm={() => { if (pendingDelete) { deleteMutation.mutate(pendingDelete); setPendingDelete(null) } }}
+      onCancel={() => setPendingDelete(null)}
+    />
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
@@ -252,10 +279,19 @@ export default function ProductsPage() {
           {!isLoading && products.length === 0 && (
             <p className="text-sm text-muted-foreground text-center py-8">No products yet. Click "New Product" to add the first one.</p>
           )}
-          {products.map(p => <ProductRow key={p.id} product={p} onEdit={openEdit} onDelete={id => deleteMutation.mutate(id)} deleting={deleteMutation.isPending} />)}
+          {products.map(p => (
+            <ProductRow
+              key={p.id}
+              product={p}
+              onEdit={openEdit}
+              onDelete={id => IS_PROD ? setPendingDelete(id) : deleteMutation.mutate(id)}
+              deleting={deleteMutation.isPending}
+            />
+          ))}
         </CardContent>
       </Card>
     </div>
+    </>
   )
 }
 
