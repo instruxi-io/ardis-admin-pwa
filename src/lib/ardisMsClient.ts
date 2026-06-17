@@ -44,6 +44,29 @@ export interface PublishSchemaPayload {
   ui_schema: Record<string, unknown>
 }
 
+export interface PricingTierOption {
+  value: string
+  price_id: string
+  amount: number       // cents
+  currency: string
+  interval: string     // 'month' | 'year' | '' = one-time
+}
+
+export interface ProductPricing {
+  model: 'tiered'
+  field: string        // order_schema field key that selects the tier
+  options: PricingTierOption[]
+}
+
+export interface ProductAddon {
+  field: string        // order_schema boolean field key
+  label?: string       // display label (falls back to field title)
+  price_id: string
+  amount: number       // cents
+  currency: string
+  interval: string
+}
+
 export interface ProductEntry {
   id: string
   name: string
@@ -60,6 +83,8 @@ export interface ProductEntry {
   credential_data_schema?: Record<string, unknown>
   credential_ui_schema?: Record<string, unknown>
   schema_version?: string
+  pricing?: ProductPricing
+  addons?: ProductAddon[]
   published_at?: string
   published_by?: string
 }
