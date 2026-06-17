@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
 import { Plus, ChevronDown, ChevronUp, Package, Trash2, X } from 'lucide-react'
-import { productsApi, type ProductEntry } from '@/lib/ardisMsClient'
+import { productsApi, type ProductEntry, type ProductPricing, type ProductAddon } from '@/lib/ardisMsClient'
 import { useAuth } from '@/context/AuthContext'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -41,6 +41,8 @@ export default function ProductsPage() {
   const [showForm, setShowForm] = useState(false)
   const [editProduct, setEditProduct] = useState<ProductEntry | null>(null)
   const [orderFields, setOrderFields] = useState<OrderField[]>([])
+  const [pricing, setPricing] = useState<ProductPricing | null>(null)
+  const [addons, setAddons] = useState<ProductAddon[]>([])
   const orderToggleRef = useRef<RawToggleRef | null>(null)
   const queryClient = useQueryClient()
   const [pendingProduct, setPendingProduct] = useState<ProductEntry | null>(null)
@@ -93,6 +95,8 @@ export default function ProductsPage() {
     setValue('schema_version', p.schema_version ?? '')
     const parsed = schemasToOrderFields(p.order_schema ?? {}, p.order_ui_schema ?? {})
     setOrderFields(parsed)
+    setPricing(p.pricing ?? null)
+    setAddons(p.addons ?? [])
     setShowForm(true)
   }
 
@@ -135,6 +139,8 @@ export default function ProductsPage() {
       active: true,
       order_schema: orderSchema,
       order_ui_schema: orderUiSchema,
+      ...(pricing ? { pricing } : {}),
+      ...(addons.length ? { addons } : {}),
       ...(values.price_one_time ? { price_one_time: Number(values.price_one_time) } : {}),
       ...(values.schema_version ? { schema_version: values.schema_version } : {}),
     }
@@ -145,7 +151,7 @@ export default function ProductsPage() {
     }
   }
 
-  const cancelForm = () => { setShowForm(false); setEditProduct(null); reset(); setOrderFields([]) }
+  const cancelForm = () => { setShowForm(false); setEditProduct(null); reset(); setOrderFields([]); setPricing(null); setAddons([]) }
 
   return (
     <>
@@ -206,10 +212,11 @@ export default function ProductsPage() {
                     {...register('verifier_id')}
                     placeholder="clear-health"
                     className="font-mono text-sm"
-                    disabled={isDeveloper}
-                    title={isDeveloper ? 'Locked to your account username' : undefined}
+                    disabled={isDeveloper || !!editProduct}
+                    title={isDeveloper ? `Locked to your account: ${username}` : editProduct ? 'Cannot change verifier ID after creation' : undefined}
                   />
                   {isDeveloper && <p className="text-xs text-muted-foreground">Locked to your account: <span className="font-mono">{username}</span></p>}
+                  {!isDeveloper && editProduct && <p className="text-xs text-muted-foreground">Verifier ID cannot be changed after creation.</p>}
                 </Field>
               </div>
               <div className="grid grid-cols-3 gap-4">
@@ -255,6 +262,19 @@ export default function ProductsPage() {
                 >
                   <OrderSchemaBuilder fields={orderFields} onChange={setOrderFields} />
                 </RawToggle>
+              </div>
+              <div className="space-y-2 pt-1">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">Pricing</label>
+                  <p className="text-xs text-muted-foreground/70">Configure Stripe prices for tiers and add-on toggles. Leave blank for free / invoice-only products.</p>
+                </div>
+                <PricingBuilder
+                  orderFields={orderFields}
+                  pricing={pricing}
+                  addons={addons}
+                  onPricingChange={setPricing}
+                  onAddonsChange={setAddons}
+                />
               </div>
               <div className="flex gap-3 pt-1">
                 <Button type="submit" size="sm" disabled={publishMutation.isPending}>
@@ -356,6 +376,161 @@ function Field({ label, error, children }: { label: string; error?: string; chil
       <label className="text-xs font-medium text-muted-foreground">{label}</label>
       {children}
       {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
+  )
+}
+
+// ── PricingBuilder ────────────────────────────────────────────────────────────
+
+const INTERVALS = [
+  { value: 'month', label: '/month' },
+  { value: 'year',  label: '/year'  },
+  { value: '',      label: 'one-time' },
+]
+
+function PriceRow({
+  priceId, amount, interval, currency,
+  onPriceId, onAmount, onInterval,
+}: {
+  priceId: string; amount: number; interval: string; currency: string
+  onPriceId: (v: string) => void; onAmount: (v: number) => void; onInterval: (v: string) => void
+}) {
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_90px_80px] gap-1.5 items-center">
+      <Input value={priceId} onChange={e => onPriceId(e.target.value.trim())} placeholder="price_xxx" className="font-mono text-xs h-7" />
+      <div className="relative">
+        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">{currency === 'USD' ? '$' : currency}</span>
+        <Input
+          value={amount > 0 ? (amount / 100).toString() : ''}
+          onChange={e => onAmount(Math.round((Number(e.target.value) || 0) * 100))}
+          placeholder="0.00" type="number" step="0.01" className="pl-5 text-xs h-7"
+        />
+      </div>
+      <select value={interval} onChange={e => onInterval(e.target.value)}
+        className="h-7 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring">
+        {INTERVALS.map(i => <option key={i.value} value={i.value}>{i.label}</option>)}
+      </select>
+    </div>
+  )
+}
+
+interface PricingBuilderProps {
+  orderFields: OrderField[]
+  pricing: ProductPricing | null
+  addons: ProductAddon[]
+  onPricingChange: (p: ProductPricing | null) => void
+  onAddonsChange: (a: ProductAddon[]) => void
+}
+
+function PricingBuilder({ orderFields, pricing, addons, onPricingChange, onAddonsChange }: PricingBuilderProps) {
+  const enumFields = orderFields.filter(f => f.type === 'enum' && f.key)
+  const boolFields = orderFields.filter(f => f.type === 'boolean' && f.key)
+  const currency = 'USD'
+
+  const selectTierField = (fieldKey: string) => {
+    if (!fieldKey) { onPricingChange(null); return }
+    const field = enumFields.find(f => f.key === fieldKey)
+    if (!field) return
+    const existingOptions = pricing?.field === fieldKey ? pricing.options : []
+    onPricingChange({
+      model: 'tiered',
+      field: fieldKey,
+      options: (field.enumOptions ?? []).map(val => {
+        const existing = existingOptions.find(o => o.value === val)
+        return existing ?? { value: val, price_id: '', amount: 0, currency: currency.toLowerCase(), interval: 'month' }
+      }),
+    })
+  }
+
+  const updateTierOption = (val: string, patch: Partial<ProductPricing['options'][0]>) => {
+    if (!pricing) return
+    onPricingChange({
+      ...pricing,
+      options: pricing.options.map(o => o.value === val ? { ...o, ...patch } : o),
+    })
+  }
+
+  const toggleAddon = (field: OrderField) => {
+    const exists = addons.find(a => a.field === field.key)
+    if (exists) {
+      onAddonsChange(addons.filter(a => a.field !== field.key))
+    } else {
+      onAddonsChange([...addons, { field: field.key, label: field.title, price_id: '', amount: 0, currency: currency.toLowerCase(), interval: 'month' }])
+    }
+  }
+
+  const updateAddon = (fieldKey: string, patch: Partial<ProductAddon>) => {
+    onAddonsChange(addons.map(a => a.field === fieldKey ? { ...a, ...patch } : a))
+  }
+
+  return (
+    <div className="space-y-4 rounded-md border border-border p-3 bg-muted/20">
+      {/* Tiered pricing */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <p className="text-xs font-medium">Subscription Tier</p>
+          <select
+            value={pricing?.field ?? ''}
+            onChange={e => selectTierField(e.target.value)}
+            className="h-6 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            <option value="">— none —</option>
+            {enumFields.map(f => <option key={f.key} value={f.key}>{f.title || f.key}</option>)}
+          </select>
+        </div>
+        {pricing && (
+          <div className="space-y-1.5 pl-2 border-l-2 border-border">
+            <div className="grid grid-cols-[minmax(0,1fr)_90px_80px] gap-1.5 mb-0.5">
+              <p className="text-xs text-muted-foreground">Option</p>
+              <p className="text-xs text-muted-foreground">Stripe Price ID</p>
+              <p className="text-xs text-muted-foreground">Amount</p>
+            </div>
+            {pricing.options.map(opt => (
+              <div key={opt.value} className="space-y-1">
+                <p className="text-xs text-muted-foreground truncate" title={opt.value}>{opt.value}</p>
+                <PriceRow
+                  priceId={opt.price_id} amount={opt.amount} interval={opt.interval} currency={currency}
+                  onPriceId={v => updateTierOption(opt.value, { price_id: v })}
+                  onAmount={v => updateTierOption(opt.value, { amount: v })}
+                  onInterval={v => updateTierOption(opt.value, { interval: v })}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+        {enumFields.length === 0 && <p className="text-xs text-muted-foreground italic">Add a Dropdown field to the order form to enable tiered pricing.</p>}
+      </div>
+
+      {/* Add-on toggles */}
+      {boolFields.length > 0 && (
+        <div className="space-y-2 border-t border-border pt-3">
+          <p className="text-xs font-medium">Add-on Toggles</p>
+          <div className="space-y-2">
+            {boolFields.map(f => {
+              const addon = addons.find(a => a.field === f.key)
+              return (
+                <div key={f.key} className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" checked={!!addon} onChange={() => toggleAddon(f)}
+                      className="h-3.5 w-3.5 rounded border-border" id={`addon-${f.key}`} />
+                    <label htmlFor={`addon-${f.key}`} className="text-xs cursor-pointer">{f.title || f.key}</label>
+                  </div>
+                  {addon && (
+                    <div className="pl-5">
+                      <PriceRow
+                        priceId={addon.price_id} amount={addon.amount} interval={addon.interval} currency={currency}
+                        onPriceId={v => updateAddon(f.key, { price_id: v })}
+                        onAmount={v => updateAddon(f.key, { amount: v })}
+                        onInterval={v => updateAddon(f.key, { interval: v })}
+                      />
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
