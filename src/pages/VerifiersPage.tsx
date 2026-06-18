@@ -46,20 +46,19 @@ export default function VerifiersPage() {
   const { activeTenantId } = useAuth()
 
   const { data: verifiers = [], isLoading } = useQuery<Verifier[]>({
-    queryKey: ['verifiers', activeTenantId],
+    queryKey: ['tenant-members-verifiers', activeTenantId],
     queryFn: async () => {
+      if (!activeTenantId) return []
       const res = await getEnforcerApiClient().get<{ data: Verifier[] }>(
         `admin/tenants/${activeTenantId}/members`,
         { limit: 200 }
       )
-      // Verifiers = Developer role only
       return (res.data ?? []).filter(v => v.role?.toLowerCase() === 'developer')
     },
-    enabled: !!activeTenantId,
-    staleTime: 0,
+    refetchOnMount: true,
   })
 
-  const isReady = !!activeTenantId
+  const isReady = true
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<OnboardValues>({
     resolver: zodResolver(onboardSchema),
