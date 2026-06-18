@@ -56,7 +56,10 @@ export default function VerifiersPage() {
       return (res.data ?? []).filter(v => v.role?.toLowerCase() === 'developer')
     },
     enabled: !!activeTenantId,
+    staleTime: 0,
   })
+
+  const isReady = !!activeTenantId
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<OnboardValues>({
     resolver: zodResolver(onboardSchema),
@@ -171,12 +174,12 @@ export default function VerifiersPage() {
         <CardHeader className="py-4">
           <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
             <Shield size={14} />
-            {isLoading ? 'Loading…' : `${verifiers.length} verifier${verifiers.length !== 1 ? 's' : ''}`}
+            {(!isReady || isLoading) ? 'Loading…' : `${verifiers.length} verifier${verifiers.length !== 1 ? 's' : ''}`}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {isLoading && <p className="text-sm text-muted-foreground text-center py-8">Loading…</p>}
-          {!isLoading && verifiers.length === 0 && (
+          {(!isReady || isLoading) && <p className="text-sm text-muted-foreground text-center py-8">Loading…</p>}
+          {isReady && !isLoading && verifiers.length === 0 && (
             <p className="text-sm text-muted-foreground text-center py-8">
               No verifiers yet. Click "Onboard VP" to add the first one.
             </p>

@@ -31,12 +31,14 @@ export default function UsersPage() {
         `admin/tenants/${activeTenantId}/members`,
         { limit: 200 }
       )
-      // Professionals = User role only
       return (res.data ?? []).filter(m => m.role?.toLowerCase() === 'user')
     },
     enabled: !!activeTenantId,
     refetchInterval: 60_000,
+    staleTime: 0,
   })
+
+  const loading = isLoading || !activeTenantId
 
   const filtered = members.filter(m => {
     if (!search) return true
@@ -89,8 +91,8 @@ export default function UsersPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {isLoading && <p className="text-sm text-muted-foreground text-center py-8">Loading…</p>}
-          {!isLoading && filtered.length === 0 && (
+          {loading && <p className="text-sm text-muted-foreground text-center py-8">Loading…</p>}
+          {!loading && filtered.length === 0 && (
             <p className="text-sm text-muted-foreground text-center py-8">No professionals found.</p>
           )}
           {filtered.map(user => (
