@@ -24,6 +24,7 @@ export default function UsersPage() {
   const params: UsersListParams = {
     limit: PAGE_SIZE,
     offset: page * PAGE_SIZE,
+    role: 'user',
     ...(search ? { username: search } : {}),
   }
 
