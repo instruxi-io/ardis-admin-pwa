@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { toast } from 'sonner'
 import { Plus, Shield, X, UserX, UserCheck } from 'lucide-react'
 import { getEnforcerApiClient } from '@/lib/enforcerApiClient'
+import { useAuth } from '@/context/AuthContext'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,13 +18,13 @@ const DEVELOPER_ROLE_ID = '00000000-0000-0000-0000-000000000004'
 const IS_PROD = env.APP_ENV === 'production'
 
 interface Verifier {
-  id: string
+  user_id: string
   email?: string
   username?: string
   first_name?: string
   last_name?: string
   active?: boolean
-  role?: { name: string }
+  role?: string
   created_at?: string
 }
 
@@ -42,15 +43,19 @@ export default function VerifiersPage() {
   const [showForm, setShowForm] = useState(false)
   const queryClient = useQueryClient()
 
+  const { activeTenantId } = useAuth()
+
   const { data: verifiers = [], isLoading } = useQuery<Verifier[]>({
-    queryKey: ['verifiers'],
+    queryKey: ['verifiers', activeTenantId],
     queryFn: async () => {
-      const res = await getEnforcerApiClient().get<{ data: Verifier[]; total: number }>(
-        'admin/users',
-        { role: 'developer', limit: 100 }
+      const res = await getEnforcerApiClient().get<{ data: Verifier[] }>(
+        `admin/tenants/${activeTenantId}/members`,
+        { limit: 200 }
       )
-      return res.data ?? []
+      // Verifiers = Developer role only
+      return (res.data ?? []).filter(v => v.role?.toLowerCase() === 'developer')
     },
+    enabled: !!activeTenantId,
   })
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<OnboardValues>({
@@ -81,7 +86,7 @@ export default function VerifiersPage() {
   const deactivateMutation = useMutation({
     mutationFn: (id: string) => getEnforcerApiClient().patch(`admin/users/${id}/deactivate`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['verifiers'] })
+      queryClient.invalidateQueries({ queryKey: ['verifiers', activeTenantId] })
       toast.success('Verifier deactivated')
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed'),
@@ -90,7 +95,7 @@ export default function VerifiersPage() {
   const activateMutation = useMutation({
     mutationFn: (id: string) => getEnforcerApiClient().patch(`admin/users/${id}/activate`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['verifiers'] })
+      queryClient.invalidateQueries({ queryKey: ['verifiers', activeTenantId] })
       toast.success('Verifier activated')
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed'),
@@ -177,7 +182,7 @@ export default function VerifiersPage() {
             </p>
           )}
           {verifiers.map(v => (
-            <div key={v.id} className="flex items-center justify-between px-6 py-3 border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
+            <div key={v.user_id} className="flex items-center justify-between px-6 py-3 border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
@@ -190,7 +195,7 @@ export default function VerifiersPage() {
                     </Badge>
                   </div>
                   <p className="text-xs text-muted-foreground truncate">
-                    {[v.first_name, v.last_name].filter(Boolean).join(' ') || v.email || v.id}
+                    {[v.first_name, v.last_name].filter(Boolean).join(' ') || v.email || v.user_id}
                   </p>
                 </div>
               </div>
@@ -202,7 +207,7 @@ export default function VerifiersPage() {
                     className="text-muted-foreground hover:text-destructive h-7 px-2 text-xs"
                     onClick={() => {
                       if (IS_PROD && !confirm(`Deactivate verifier "${v.username}"?`)) return
-                      deactivateMutation.mutate(v.id)
+                      deactivateMutation.mutate(v.user_id)
                     }}
                     disabled={deactivateMutation.isPending}
                   >
@@ -214,7 +219,7 @@ export default function VerifiersPage() {
                     variant="ghost"
                     size="sm"
                     className="text-muted-foreground hover:text-primary h-7 px-2 text-xs"
-                    onClick={() => activateMutation.mutate(v.id)}
+                    onClick={() => activateMutation.mutate(v.user_id)}
                     disabled={activateMutation.isPending}
                   >
                     <UserCheck size={13} className="mr-1" />
