@@ -85,7 +85,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             authenticated: true,
             account: res.data,
             claims: null,
-            activeTenantId: res.data.tenant_id ?? null,
+            activeTenantId: res.data.tenant_id ?? (res.data as any).tenant?.id ?? null,
           })
         })
         .catch(() => {
