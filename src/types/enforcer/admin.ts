@@ -30,6 +30,7 @@ export interface UsersListParams {
   include_deleted?: boolean
   require_verified?: string
   profile_incomplete?: boolean
+  role?: string
 }
 
 export interface ResolvedUser {
