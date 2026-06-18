@@ -159,7 +159,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ? (rawRole as unknown as { name: string }).name?.toLowerCase() ?? null
       : (rawRole as string).toLowerCase()
     : null
-  const role = accountRole ?? state.claims?.role?.toLowerCase() ?? null
+  // Normalize spaces to underscores so "tenant admin" matches "tenant_admin".
+  const role = (accountRole ?? state.claims?.role?.toLowerCase() ?? null)?.replace(/\s+/g, '_') ?? null
   const username = state.account?.username ?? null
   const isDeveloper = role === 'developer'
   const isTenantAdmin = role === 'tenant_admin' || role === 'admin'
