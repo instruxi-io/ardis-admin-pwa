@@ -25,20 +25,20 @@ export default function UsersPage() {
   const [search, setSearch] = useState('')
 
   const { data: members = [], isLoading } = useQuery<Member[]>({
-    queryKey: ['tenant-members', activeTenantId],
+    queryKey: ['tenant-members-users', activeTenantId],
     queryFn: async () => {
+      if (!activeTenantId) return []
       const res = await getEnforcerApiClient().get<{ data: Member[] }>(
         `admin/tenants/${activeTenantId}/members`,
         { limit: 200 }
       )
       return (res.data ?? []).filter(m => m.role?.toLowerCase() === 'user')
     },
-    enabled: !!activeTenantId,
+    refetchOnMount: true,
     refetchInterval: 60_000,
-    staleTime: 0,
   })
 
-  const loading = isLoading || !activeTenantId
+  const loading = isLoading
 
   const filtered = members.filter(m => {
     if (!search) return true
