@@ -187,15 +187,15 @@ function validateBundle(obj: ViewModelBundle): ValidationResult {
           message: `x-pricing.field "${xp.field}" must be a property defined in order_schema`,
         },
         {
-          label: 'x-pricing options all have amounts > 0',
+          label: 'x-pricing options all have amounts defined (> 0; tiers cannot be free)',
           pass: (xp.options ?? []).length > 0 &&
                 (xp.options ?? []).every(o => typeof o.amount === 'number' && o.amount > 0),
-          message: 'Every pricing tier must have a positive amount (in cents)',
+          message: 'Every pricing tier must have a positive amount in cents — tiers cannot be free',
         },
         {
-          label: 'x-pricing addons all have amounts > 0 (if any)',
-          pass: (xp.addons ?? []).every(a => typeof a.amount === 'number' && a.amount > 0),
-          message: 'Every add-on must have a positive amount (in cents)',
+          label: 'x-pricing addons all have amounts defined (0 = free is allowed)',
+          pass: (xp.addons ?? []).every(a => typeof a.amount === 'number' && a.amount >= 0),
+          message: 'Every add-on must have an amount defined in cents (use 0 for a free add-on)',
         },
       ] as CheckResult[]
     })(),
