@@ -173,6 +173,32 @@ function validateBundle(obj: ViewModelBundle): ValidationResult {
       })(),
       message: 'ui_schema ui:groups references fields not defined in data_schema.properties',
     },
+    // ── Pricing (only checked if x-pricing is present) ──
+    ...(() => {
+      const xp = (obj['x-pricing'] ?? (obj as any).x_pricing) as XPricingConfig | undefined
+      if (!xp) return [] // no pricing = free product, valid
+
+      const orderProps = Object.keys((orderSchema.properties as object) ?? {})
+
+      return [
+        {
+          label: 'x-pricing field exists in order_schema',
+          pass: !!xp.field && orderProps.includes(xp.field),
+          message: `x-pricing.field "${xp.field}" must be a property defined in order_schema`,
+        },
+        {
+          label: 'x-pricing options all have amounts > 0',
+          pass: (xp.options ?? []).length > 0 &&
+                (xp.options ?? []).every(o => typeof o.amount === 'number' && o.amount > 0),
+          message: 'Every pricing tier must have a positive amount (in cents)',
+        },
+        {
+          label: 'x-pricing addons all have amounts > 0 (if any)',
+          pass: (xp.addons ?? []).every(a => typeof a.amount === 'number' && a.amount > 0),
+          message: 'Every add-on must have a positive amount (in cents)',
+        },
+      ] as CheckResult[]
+    })(),
     // ── Security ──
     {
       label: 'No external URL references',
