@@ -10,7 +10,7 @@ interface PublishConfirmModalProps {
   /** What the user must type exactly to confirm */
   confirmText: string
   /** Action label — shown in the title and button */
-  action?: 'Publish' | 'Delete'
+  action?: 'Publish' | 'Delete' | 'Archive'
   /** One-liner describing what's being actioned */
   description: string
 }

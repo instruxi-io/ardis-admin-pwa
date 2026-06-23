@@ -10,7 +10,6 @@ import { schemasApi, productsApi, type SchemaIndexEntry, type ProductEntry } fro
 import { useAuth } from '@/context/AuthContext'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { PublishConfirmModal } from '@/components/ui/publish-confirm-modal'
 import { format } from 'date-fns'
