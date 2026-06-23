@@ -392,10 +392,12 @@ export default function SchemasPage() {
         ui_schema:   (b.ui_schema    as Record<string, unknown>) ?? {},
       })
 
-      // 2. Publish product to Stripe. x-pricing is passed as-is from the bundle —
-      // ardis-ms auto-creates Stripe prices for each tier and addon, then stores
-      // the price_xxx IDs back in Stripe product metadata. No manual IDs needed.
+      // 2. Publish product to Stripe. Pass the existing Stripe product ID if one
+      // already exists for this verifier/credential_type so ardis-ms updates it
+      // instead of creating a duplicate.
+      const existingProduct = productIndex[`${verifierId}/${credentialType}`]
       await productsApi.publish({
+        stripe_product_id: existingProduct?.id,
         name:              b.name as string,
         description:       b.description as string | undefined,
         verifier_id:       verifierId,
