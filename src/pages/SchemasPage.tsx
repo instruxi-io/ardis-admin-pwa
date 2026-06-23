@@ -79,6 +79,7 @@ function parseBundle(raw: string): ViewModelBundle | null {
         order_ui_schema: uiSchema,
         data_schema:     schema,
         ui_schema:       uiSchema,
+        'x-pricing':     schema['x-pricing'],
         data,
       }
     }
