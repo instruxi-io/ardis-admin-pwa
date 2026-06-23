@@ -734,15 +734,15 @@ function SchemaGroup({ verifierId, credentialType, versions, product, onArchive 
   product?: ProductEntry
   onArchive?: (id: string) => void
 }) {
-  const [open, setOpen] = useState(true)
-  const latest = versions[0]?.version
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const live    = versions[0]   // most recent — always the live version
+  const history = versions.slice(1) // older versions
 
   return (
     <div className="border-b border-border last:border-0">
-      <button
-        onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center justify-between px-6 py-3 hover:bg-muted/30 transition-colors text-left"
-      >
+
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between px-6 py-3">
         <div className="flex items-center gap-3 min-w-0">
           <span className="font-mono text-sm font-medium shrink-0">{verifierId}</span>
           <Badge variant="secondary" className="text-xs font-mono shrink-0">{credentialType}</Badge>
@@ -751,7 +751,9 @@ function SchemaGroup({ verifierId, credentialType, versions, product, onArchive 
               <span className="text-sm truncate text-foreground/80">{product.name}</span>
               <Badge
                 variant="outline"
-                className={`text-xs shrink-0 ${product.active !== false ? 'border-emerald-500/40 text-emerald-600' : 'border-destructive/40 text-destructive'}`}
+                className={`text-xs shrink-0 ${product.active !== false
+                  ? 'border-emerald-500/40 text-emerald-600'
+                  : 'border-destructive/40 text-destructive'}`}
               >
                 {product.active !== false ? 'Active in Stripe' : 'Archived'}
               </Badge>
@@ -762,52 +764,86 @@ function SchemaGroup({ verifierId, credentialType, versions, product, onArchive 
             </Badge>
           )}
         </div>
-        <div className="flex items-center gap-3 ml-4 shrink-0">
-          {product?.id && onArchive && product.active !== false && (
-            <button
-              type="button"
-              onClick={e => { e.stopPropagation(); onArchive(product.id!) }}
-              className="text-xs text-muted-foreground hover:text-destructive transition-colors"
-            >
-              Archive
-            </button>
-          )}
-          <span className="text-xs text-muted-foreground">{versions.length} version{versions.length !== 1 ? 's' : ''}</span>
-          {open ? <ChevronUp size={14} className="text-muted-foreground" /> : <ChevronDown size={14} className="text-muted-foreground" />}
+        {product?.id && onArchive && product.active !== false && (
+          <button
+            type="button"
+            onClick={() => onArchive(product.id!)}
+            className="text-xs text-muted-foreground hover:text-destructive transition-colors ml-4 shrink-0"
+          >
+            Archive
+          </button>
+        )}
+      </div>
+
+      {/* ── Live version ── */}
+      {live && (
+        <div className="mx-6 mb-3 rounded-lg border border-emerald-500/25 bg-emerald-500/5 px-4 py-3 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-500 shrink-0">
+              <CheckCircle2 size={12} /> Live
+            </span>
+            <span className="font-mono text-sm font-semibold shrink-0">{live.version}</span>
+            <span className="text-xs text-muted-foreground">
+              Published {format(new Date(live.published_at), 'MMM d, yyyy HH:mm')}
+            </span>
+            {live.published_by && (
+              <span className="text-xs text-muted-foreground font-mono truncate hidden sm:block">
+                by {live.published_by}
+              </span>
+            )}
+          </div>
+          <span className="text-xs text-muted-foreground shrink-0">
+            {history.length > 0 ? `+${history.length} prior` : 'first version'}
+          </span>
         </div>
-      </button>
-      {open && (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-muted/20">
-              <th className="text-left px-8 py-2 text-xs font-medium text-muted-foreground">Version</th>
-              <th className="text-left px-6 py-2 text-xs font-medium text-muted-foreground">Published</th>
-              <th className="text-left px-6 py-2 text-xs font-medium text-muted-foreground">By</th>
-              <th className="px-6 py-2" />
-            </tr>
-          </thead>
-          <tbody>
-            {versions.map(v => (
-              <tr key={v.version} className="border-t border-border/50 hover:bg-muted/20 transition-colors">
-                <td className="px-8 py-2.5 font-mono text-sm">{v.version}</td>
-                <td className="px-6 py-2.5 text-sm text-muted-foreground">
-                  {format(new Date(v.published_at), 'MMM d, yyyy HH:mm')}
-                </td>
-                <td className="px-6 py-2.5 text-xs text-muted-foreground font-mono truncate max-w-[180px]">
-                  {v.published_by || '—'}
-                </td>
-                <td className="px-6 py-2.5 text-right">
-                  {v.version === latest && (
-                    <span className="inline-flex items-center gap-1 text-xs text-emerald-500">
-                      <CheckCircle2 size={12} /> latest
-                    </span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       )}
+
+      {/* ── Version history (collapsed by default) ── */}
+      {history.length > 0 && (
+        <div className="mx-6 mb-3">
+          <button
+            type="button"
+            onClick={() => setHistoryOpen(v => !v)}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors pb-1"
+          >
+            {historyOpen
+              ? <ChevronUp size={12} />
+              : <ChevronDown size={12} />}
+            Version history ({history.length})
+          </button>
+          {historyOpen && (
+            <div className="rounded-lg border border-border overflow-hidden mt-1">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-muted/20">
+                    <th className="text-left px-4 py-2 font-medium text-muted-foreground">Version</th>
+                    <th className="text-left px-4 py-2 font-medium text-muted-foreground">Published</th>
+                    <th className="text-left px-4 py-2 font-medium text-muted-foreground">By</th>
+                    <th className="px-4 py-2 text-right font-medium text-muted-foreground">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map(v => (
+                    <tr key={v.version} className="border-t border-border/50 text-muted-foreground">
+                      <td className="px-4 py-2 font-mono">{v.version}</td>
+                      <td className="px-4 py-2">
+                        {format(new Date(v.published_at), 'MMM d, yyyy HH:mm')}
+                      </td>
+                      <td className="px-4 py-2 font-mono truncate max-w-[160px]">
+                        {v.published_by || '—'}
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        <span className="text-muted-foreground/60 italic">superseded</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
     </div>
   )
 }
