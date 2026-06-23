@@ -233,7 +233,7 @@ function DropZone({ file, onFile }: { file: string | null; onFile: (raw: string)
     if (f) read(f)
   }, [read])
 
-  const parsed = file ? (() => { try { return JSON.parse(file) } catch { return null } })() : null
+  const parsed  = file ? parseBundle(file) : null
   const isValid = parsed !== null
 
   return (
