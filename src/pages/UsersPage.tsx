@@ -1,13 +1,11 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { getEnforcerApiClient } from '@/lib/enforcerApiClient'
 import { useAuth } from '@/context/AuthContext'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { toast } from 'sonner'
-import { Search, UserCheck, UserX, Users } from 'lucide-react'
+import { Search, Users } from 'lucide-react'
 
 interface Member {
   user_id: string
@@ -21,7 +19,6 @@ interface Member {
 
 export default function UsersPage() {
   const { activeTenantId } = useAuth()
-  const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
 
   const { data: members = [], isLoading } = useQuery<Member[]>({
@@ -48,18 +45,6 @@ export default function UsersPage() {
       m.first_name?.toLowerCase().includes(q) ||
       m.last_name?.toLowerCase().includes(q)
     )
-  })
-
-  const activateMutation = useMutation({
-    mutationFn: (id: string) => getEnforcerApiClient().patch(`admin/users/${id}/activate`),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['tenant-members'] }); toast.success('User activated') },
-    onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed'),
-  })
-
-  const deactivateMutation = useMutation({
-    mutationFn: (id: string) => getEnforcerApiClient().patch(`admin/users/${id}/deactivate`),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['tenant-members'] }); toast.success('User deactivated') },
-    onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed'),
   })
 
   return (
@@ -107,17 +92,6 @@ export default function UsersPage() {
                 <Badge variant="outline" className={user.active ? 'border-green-500 text-green-500 text-xs' : 'text-xs'}>
                   {user.active ? 'Active' : 'Inactive'}
                 </Badge>
-                {user.active ? (
-                  <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive h-7 px-2"
-                    onClick={() => deactivateMutation.mutate(user.user_id)} disabled={deactivateMutation.isPending}>
-                    <UserX size={13} />
-                  </Button>
-                ) : (
-                  <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary h-7 px-2"
-                    onClick={() => activateMutation.mutate(user.user_id)} disabled={activateMutation.isPending}>
-                    <UserCheck size={13} />
-                  </Button>
-                )}
               </div>
             </div>
           ))}
