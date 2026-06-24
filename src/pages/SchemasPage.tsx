@@ -464,6 +464,92 @@ export default function SchemasPage() {
     else publishMutation.mutate(effectiveBundle)
   }
 
+  // ── Download helpers ─────────────────────────────────────────────────────
+
+  const downloadStarterBundle = () => {
+    const starter = [
+      {
+        "$id": "your-verifier-id/credential-type/v1",
+        "title": "Product Name",
+        "description": "What this verification does.",
+        "x-verifier-id": isDeveloper && username ? username : "your-verifier-id",
+        "x-verifier-name": "Your Company Name",
+        "x-credential-type": "credential-type",
+        "x-order-type": "license",
+        "x-version": "v1",
+        "type": "object",
+        "required": ["field_one"],
+        "properties": {
+          "field_one": { "type": "string", "title": "Field One" },
+          "field_two": { "type": "string", "title": "Field Two" }
+        },
+        "x-data-schema": {
+          "type": "object",
+          "properties": {
+            "records": {
+              "type": "array",
+              "title": "Verification Records",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "verified_field": { "type": "string", "title": "Verified Field" },
+                  "status":         { "type": "string", "title": "Status" }
+                }
+              }
+            }
+          }
+        },
+        "x-data-ui-schema": {
+          "ui:order": ["records"],
+          "ui:groups": [{ "title": "Results", "fields": ["records"] }]
+        }
+      },
+      {
+        "ui:order": ["field_one", "field_two"],
+        "ui:groups": [{ "title": "Details", "fields": ["field_one", "field_two"] }]
+      },
+      {
+        "records": [{ "verified_field": "Example value", "status": "current" }]
+      }
+    ]
+    const text = starter.map(o => JSON.stringify(o, null, 2)).join('\n')
+    const blob = new Blob([text], { type: 'application/json' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href = url; a.download = 'starter_bundle.json'; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const downloadPublishedBundle = async (verifierId: string, credentialType: string, version: string, name: string) => {
+    try {
+      const content = await schemasApi.get(verifierId, credentialType, version)
+      const bundle = [
+        {
+          "$id": `${verifierId}/${credentialType}/${version}`,
+          "title": name,
+          "x-verifier-id": verifierId,
+          "x-credential-type": credentialType,
+          "x-version": version,
+          "type": "object",
+          "properties": {},
+          ...(content.data_schema ?? {}),
+        },
+        content.ui_schema ?? {},
+        {}
+      ]
+      const text = bundle.map(o => JSON.stringify(o, null, 2)).join('\n')
+      const blob = new Blob([text], { type: 'application/json' })
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href = url
+      a.download = `${verifierId}_${credentialType}_${version}.bundle.json`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      toast.error('Failed to download schema')
+    }
+  }
+
   const grouped = schemas.reduce<Record<string, typeof schemas>>((acc, s) => {
     const key = `${s.verifier_id}/${s.credential_type}`
     if (!acc[key]) acc[key] = []
@@ -492,9 +578,14 @@ export default function SchemasPage() {
               Import a vendor-supplied JSON bundle — validated, previewed, then published to Storj.
             </p>
           </div>
-          <Button onClick={() => showImport ? resetImport() : setShowImport(true)} size="sm">
-            {showImport ? 'Cancel' : <><Upload size={14} className="mr-1.5" />Import</>}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={downloadStarterBundle}>
+              <FileJson size={14} className="mr-1.5" />New Bundle
+            </Button>
+            <Button onClick={() => showImport ? resetImport() : setShowImport(true)} size="sm">
+              {showImport ? 'Cancel' : <><Upload size={14} className="mr-1.5" />Import</>}
+            </Button>
+          </div>
         </div>
 
         {/* Import flow */}
@@ -646,6 +737,7 @@ export default function SchemasPage() {
                       toast.success('Product archived in Stripe')
                     }).catch(() => toast.error('Archive failed'))
                   }}
+                  onDownload={downloadPublishedBundle}
                 />
               )
             })}
@@ -764,12 +856,13 @@ function PricingMapper({ bundle }: { bundle: ViewModelBundle }) {
 
 // ── Registry group ────────────────────────────────────────────────────────────
 
-function SchemaGroup({ verifierId, credentialType, versions, product, onArchive }: {
+function SchemaGroup({ verifierId, credentialType, versions, product, onArchive, onDownload }: {
   verifierId: string
   credentialType: string
   versions: SchemaIndexEntry[]
   product?: ProductEntry
   onArchive?: (id: string) => void
+  onDownload?: (verifierId: string, credentialType: string, version: string, name: string) => void
 }) {
   const [historyOpen, setHistoryOpen] = useState(false)
   const live    = versions[0]   // most recent — always the live version
@@ -829,9 +922,21 @@ function SchemaGroup({ verifierId, credentialType, versions, product, onArchive 
               </span>
             )}
           </div>
-          <span className="text-xs text-muted-foreground shrink-0">
-            {history.length > 0 ? `+${history.length} prior` : 'first version'}
-          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs text-muted-foreground">
+              {history.length > 0 ? `+${history.length} prior` : 'first version'}
+            </span>
+            {onDownload && (
+              <button
+                type="button"
+                onClick={() => onDownload(verifierId, credentialType, live.version, product?.name ?? credentialType)}
+                className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
+                title="Download bundle file"
+              >
+                <Database size={12} /> Load
+              </button>
+            )}
+          </div>
         </div>
       )}
 
