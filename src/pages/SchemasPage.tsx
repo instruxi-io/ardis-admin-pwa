@@ -1,4 +1,5 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useRef, useState, Component } from 'react'
+import type { ReactNode, ErrorInfo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -340,6 +341,32 @@ function ValidationPanel({ result }: { result: ValidationResult }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
+// ── Preview error boundary ────────────────────────────────────────────────────
+// Catches RJSF render errors (e.g. ui:order missing properties) and shows a
+// clean message rather than crashing the import flow.
+
+class PreviewErrorBoundary extends Component<
+  { children: ReactNode; label: string },
+  { error: string | null }
+> {
+  state = { error: null }
+  static getDerivedStateFromError(e: Error) { return { error: e.message } }
+  componentDidCatch(_e: Error, _info: ErrorInfo) {}
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full min-h-[200px] gap-3 p-4 rounded-xl border border-destructive/30 bg-destructive/5">
+          <XCircle size={20} className="text-destructive" />
+          <p className="text-xs font-semibold text-destructive">{this.props.label} render error</p>
+          <p className="text-xs text-muted-foreground text-center max-w-xs">{this.state.error}</p>
+          <p className="text-xs text-muted-foreground/60 text-center">Fix the schema and re-import to resolve.</p>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 export default function SchemasPage() {
   const { isDeveloper, username } = useAuth()
   const queryClient = useQueryClient()
@@ -546,17 +573,21 @@ export default function SchemasPage() {
 
                   {showPreview && (
                     <div className="grid grid-cols-2 gap-6 py-6 px-4 bg-muted/20 rounded-xl border border-border overflow-x-auto">
-                      <OrderFormPreview
-                        schema={(effectiveBundle.order_schema as Record<string, unknown>) ?? {}}
-                        uiSchema={(effectiveBundle.order_ui_schema as Record<string, unknown>) ?? {}}
-                      />
-                      <CredentialPreview
-                        schema={(effectiveBundle.data_schema as Record<string, unknown>) ?? {}}
-                        uiSchema={(effectiveBundle.ui_schema as Record<string, unknown>) ?? {}}
-                        data={(effectiveBundle.data as Record<string, unknown>) ?? {}}
-                        verifierName={effectiveBundle.verifier_name as string}
-                        credentialType={effectiveBundle.credential_type as string}
-                      />
+                      <PreviewErrorBoundary label="Order form">
+                        <OrderFormPreview
+                          schema={(effectiveBundle.order_schema as Record<string, unknown>) ?? {}}
+                          uiSchema={(effectiveBundle.order_ui_schema as Record<string, unknown>) ?? {}}
+                        />
+                      </PreviewErrorBoundary>
+                      <PreviewErrorBoundary label="Credential">
+                        <CredentialPreview
+                          schema={(effectiveBundle.data_schema as Record<string, unknown>) ?? {}}
+                          uiSchema={(effectiveBundle.ui_schema as Record<string, unknown>) ?? {}}
+                          data={(effectiveBundle.data as Record<string, unknown>) ?? {}}
+                          verifierName={effectiveBundle.verifier_name as string}
+                          credentialType={effectiveBundle.credential_type as string}
+                        />
+                      </PreviewErrorBoundary>
                     </div>
                   )}
                 </div>
