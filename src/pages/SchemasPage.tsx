@@ -83,7 +83,8 @@ function parseBundle(raw: string): ViewModelBundle | null {
         // order form schema. Falls back to order schema if not provided.
         data_schema:     (schema['x-data-schema'] as Record<string, unknown>) ?? schema,
         ui_schema:       (schema['x-data-ui-schema'] as Record<string, unknown>) ?? uiSchema,
-        'x-pricing':     schema['x-pricing'],
+        'x-pricing':      schema['x-pricing'],
+        'x-product-role': (schema['x-product-role'] as string) ?? '',
         data,
       }
     }
