@@ -734,25 +734,55 @@ export default function SchemasPage() {
                 No view models published yet. Import a bundle above to get started.
               </p>
             )}
-            {Object.entries(grouped).map(([key, versions]) => {
-              const [verifierId, credentialType] = key.split('/')
+            {(() => {
+              const entries = Object.entries(grouped)
+              const platformEntries = entries.filter(([key]) => (productIndex[key] as any)?.product_role === 'platform')
+              const vendorEntries   = entries.filter(([key]) => (productIndex[key] as any)?.product_role !== 'platform')
+              const renderGroup = ([key, versions]: [string, typeof schemas]) => {
+                const [verifierId, credentialType] = key.split('/')
+                return (
+                  <SchemaGroup
+                    key={key}
+                    verifierId={verifierId}
+                    credentialType={credentialType}
+                    versions={[...versions].sort((a, b) => b.version.localeCompare(a.version))}
+                    product={productIndex[key]}
+                    isPlatform={(productIndex[key] as any)?.product_role === 'platform'}
+                    onArchive={(id) => {
+                      productsApi.delete(id).then(() => {
+                        queryClient.invalidateQueries({ queryKey: ['products'] })
+                        toast.success('Product archived in Stripe')
+                      }).catch(() => toast.error('Archive failed'))
+                    }}
+                    onDownload={downloadPublishedBundle}
+                  />
+                )
+              }
               return (
-                <SchemaGroup
-                  key={key}
-                  verifierId={verifierId}
-                  credentialType={credentialType}
-                  versions={[...versions].sort((a, b) => b.version.localeCompare(a.version))}
-                  product={productIndex[key]}
-                  onArchive={(id) => {
-                    productsApi.delete(id).then(() => {
-                      queryClient.invalidateQueries({ queryKey: ['products'] })
-                      toast.success('Product archived in Stripe')
-                    }).catch(() => toast.error('Archive failed'))
-                  }}
-                  onDownload={downloadPublishedBundle}
-                />
+                <>
+                  {platformEntries.length > 0 && (
+                    <>
+                      <div className="px-6 py-2 border-b border-border bg-amber-500/5 flex items-center gap-2">
+                        <span className="text-xs font-semibold text-amber-600 uppercase tracking-wide">Platform Subscription</span>
+                        <span className="text-xs text-muted-foreground">— gates vault + catalogue access for all professionals</span>
+                      </div>
+                      {platformEntries.map(renderGroup)}
+                    </>
+                  )}
+                  {vendorEntries.length > 0 && (
+                    <>
+                      {platformEntries.length > 0 && (
+                        <div className="px-6 py-2 border-b border-border bg-muted/20 flex items-center gap-2">
+                          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Vendor Products</span>
+                          <span className="text-xs text-muted-foreground">— orderable from the professional catalogue</span>
+                        </div>
+                      )}
+                      {vendorEntries.map(renderGroup)}
+                    </>
+                  )}
+                </>
               )
-            })}
+            })()}
           </CardContent>
         </Card>
       </div>
@@ -868,11 +898,12 @@ function PricingMapper({ bundle }: { bundle: ViewModelBundle }) {
 
 // ── Registry group ────────────────────────────────────────────────────────────
 
-function SchemaGroup({ verifierId, credentialType, versions, product, onArchive, onDownload }: {
+function SchemaGroup({ verifierId, credentialType, versions, product, isPlatform, onArchive, onDownload }: {
   verifierId: string
   credentialType: string
   versions: SchemaIndexEntry[]
   product?: ProductEntry
+  isPlatform?: boolean
   onArchive?: (id: string) => void
   onDownload?: (verifierId: string, credentialType: string, version: string, name: string) => void
 }) {
@@ -891,6 +922,11 @@ function SchemaGroup({ verifierId, credentialType, versions, product, onArchive,
           {product ? (
             <>
               <span className="text-sm truncate text-foreground/80">{product.name}</span>
+              {isPlatform && (
+                <Badge className="text-xs shrink-0 bg-amber-500/15 text-amber-600 border border-amber-500/40">
+                  Platform Gate
+                </Badge>
+              )}
               <Badge
                 variant="outline"
                 className={`text-xs shrink-0 ${product.active !== false
