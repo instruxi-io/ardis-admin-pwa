@@ -439,7 +439,8 @@ export default function SchemasPage() {
         order_schema:      b.order_schema as Record<string, unknown>,
         order_ui_schema:   (b.order_ui_schema as Record<string, unknown>) ?? {},
         display_schema_path: `display-schemas/${verifierId}/${credentialType}/${version}/schema.json`,
-        x_pricing:         (b['x-pricing'] ?? (b as any).x_pricing),
+        x_pricing:    (b['x-pricing'] ?? (b as any).x_pricing),
+        product_role: (b as any)['x-product-role'] ?? '',
       } as any)
     },
     onSuccess: () => {
@@ -460,6 +461,11 @@ export default function SchemasPage() {
 
   const handlePublish = () => {
     if (!effectiveBundle) return
+    // Developers may never publish platform-role products.
+    if (isDeveloper && (effectiveBundle as any)['x-product-role'] === 'platform') {
+      toast.error('Platform subscription products may only be published by a tenant admin.')
+      return
+    }
     if (IS_PROD) setPendingBundle(effectiveBundle)
     else publishMutation.mutate(effectiveBundle)
   }
@@ -550,7 +556,13 @@ export default function SchemasPage() {
     }
   }
 
-  const grouped = schemas.reduce<Record<string, typeof schemas>>((acc, s) => {
+  // Developers only see their own products — never platform-role products.
+  // Platform subscription products are managed exclusively by tenant_admin.
+  const visibleSchemas = isDeveloper
+    ? schemas.filter(s => s.verifier_id === username && (s as any).product_role !== 'platform')
+    : schemas
+
+  const grouped = visibleSchemas.reduce<Record<string, typeof schemas>>((acc, s) => {
     const key = `${s.verifier_id}/${s.credential_type}`
     if (!acc[key]) acc[key] = []
     acc[key].push(s)
