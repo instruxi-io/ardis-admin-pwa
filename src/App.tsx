@@ -16,7 +16,6 @@ import SessionsPage from '@/pages/SessionsPage'
 import AuditLogPage from '@/pages/AuditLogPage'
 import TermsPage from '@/pages/TermsPage'
 import SchemasPage from '@/pages/SchemasPage'
-import ProductsPage from '@/pages/ProductsPage'
 import VerifiersPage from '@/pages/VerifiersPage'
 
 const queryClient = new QueryClient({
@@ -51,7 +50,7 @@ export default function App() {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<Navigate to="/products" replace />} />
+                <Route index element={<Navigate to="/schemas" replace />} />
                 <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/users" element={<UsersPage />} />
                 <Route path="/users/:id" element={<UserDetailPage />} />
@@ -60,8 +59,8 @@ export default function App() {
                 <Route path="/sessions" element={<SessionsPage />} />
                 <Route path="/audit" element={<AuditLogPage />} />
                 <Route path="/terms" element={<TermsPage />} />
-                <Route path="/schemas" element={<SchemasPage />} />
-                <Route path="/products" element={<ProductsPage />} />
+                <Route path="/schemas" element={<SchemasPage mode="vendor" />} />
+                <Route path="/platform" element={<SchemasPage mode="platform" />} />
                 <Route path="/verifiers" element={<VerifiersPage />} />
               </Route>
               <Route path="*" element={<Navigate to="/login" replace />} />

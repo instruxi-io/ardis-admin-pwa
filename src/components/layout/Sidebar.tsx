@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LogOut, Building2, Layers, Package, Users, Shield, ScrollText } from 'lucide-react'
+import { LogOut, Building2, Layers, Users, Shield, ScrollText, Crown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
@@ -7,8 +7,7 @@ import { Badge } from '@/components/ui/badge'
 
 // Items visible to all authenticated operators (VPs and admins).
 const vpNavItems = [
-  { to: '/products', icon: Package, label: 'Products' },
-  { to: '/schemas', icon: Layers, label: 'Credential Schemas' },
+  { to: '/schemas', icon: Layers, label: 'View Models' },
 ]
 
 // Items visible to Tenant Admins (IX operators) only.
@@ -80,7 +79,32 @@ export function Sidebar() {
           </NavLink>
         ))}
 
-        {/* Admin-only items */}
+        {/* Tenant admin platform management */}
+        {isTenantAdmin && (
+          <>
+            <div className="pt-3 pb-1 px-3">
+              <p className="text-xs font-medium text-muted-foreground/60 uppercase tracking-wider">
+                Platform
+              </p>
+            </div>
+            <NavLink
+              to="/platform"
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
+                  isActive
+                    ? 'bg-amber-500/15 text-amber-600 font-medium'
+                    : 'text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground'
+                )
+              }
+            >
+              <Crown size={16} />
+              Platform Subscription
+            </NavLink>
+          </>
+        )}
+
+        {/* Admin-only ecosystem items */}
         {isTenantAdmin && (
           <>
             <div className="pt-3 pb-1 px-3">

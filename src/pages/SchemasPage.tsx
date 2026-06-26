@@ -367,8 +367,9 @@ class PreviewErrorBoundary extends Component<
   }
 }
 
-export default function SchemasPage() {
-  const { isDeveloper, username } = useAuth()
+export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'platform' }) {
+  const isPlatformMode = mode === 'platform'
+  const { isDeveloper, isTenantAdmin, username } = useAuth()
   const queryClient = useQueryClient()
 
   const [showImport, setShowImport] = useState(false)
@@ -556,11 +557,14 @@ export default function SchemasPage() {
     }
   }
 
-  // Developers only see their own products — never platform-role products.
-  // Platform subscription products are managed exclusively by tenant_admin.
-  const visibleSchemas = isDeveloper
-    ? schemas.filter(s => s.verifier_id === username && (s as any).product_role !== 'platform')
-    : schemas
+  // Mode filtering:
+  // - "platform" route: tenant_admin only, shows only platform-role products
+  // - "vendor" route: shows vendor products; developers scoped to their own verifier_id
+  const visibleSchemas = isPlatformMode
+    ? schemas.filter(s => (s as any).product_role === 'platform')
+    : isDeveloper
+      ? schemas.filter(s => s.verifier_id === username && (s as any).product_role !== 'platform')
+      : schemas.filter(s => (s as any).product_role !== 'platform')
 
   const grouped = visibleSchemas.reduce<Record<string, typeof schemas>>((acc, s) => {
     const key = `${s.verifier_id}/${s.credential_type}`
@@ -585,9 +589,13 @@ export default function SchemasPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold">View Models</h1>
+            <h1 className="text-2xl font-semibold">
+              {isPlatformMode ? 'Platform Subscription' : 'View Models'}
+            </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Import a vendor-supplied JSON bundle — validated, previewed, then published to Storj.
+              {isPlatformMode
+                ? 'Manage the platform subscription that gates vault and catalogue access for all professionals. Tenant admin only.'
+                : 'Import a vendor-supplied JSON bundle — validated, previewed, then published to Storj.'}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -762,10 +770,12 @@ export default function SchemasPage() {
                 <>
                   {platformEntries.length > 0 && (
                     <>
-                      <div className="px-6 py-2 border-b border-border bg-amber-500/5 flex items-center gap-2">
-                        <span className="text-xs font-semibold text-amber-600 uppercase tracking-wide">Platform Subscription</span>
-                        <span className="text-xs text-muted-foreground">— gates vault + catalogue access for all professionals</span>
-                      </div>
+                      {!isPlatformMode && (
+                        <div className="px-6 py-2 border-b border-border bg-amber-500/5 flex items-center gap-2">
+                          <span className="text-xs font-semibold text-amber-600 uppercase tracking-wide">Platform Subscription</span>
+                          <span className="text-xs text-muted-foreground">— gates vault + catalogue access for all professionals</span>
+                        </div>
+                      )}
                       {platformEntries.map(renderGroup)}
                     </>
                   )}
