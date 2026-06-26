@@ -557,14 +557,18 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
     }
   }
 
-  // Mode filtering:
-  // - "platform" route: tenant_admin only, shows only platform-role products
-  // - "vendor" route: shows vendor products; developers scoped to their own verifier_id
+  // product_role lives on the product, not the schema index entry.
+  // Use productIndex to check it when filtering schemas.
+  const schemaProductRole = (s: typeof schemas[0]) => {
+    const key = `${s.verifier_id}/${s.credential_type}`
+    return (productIndex[key] as any)?.product_role ?? ''
+  }
+
   const visibleSchemas = isPlatformMode
-    ? schemas.filter(s => (s as any).product_role === 'platform')
+    ? schemas.filter(s => schemaProductRole(s) === 'platform')
     : isDeveloper
-      ? schemas.filter(s => s.verifier_id === username && (s as any).product_role !== 'platform')
-      : schemas.filter(s => (s as any).product_role !== 'platform')
+      ? schemas.filter(s => s.verifier_id === username && schemaProductRole(s) !== 'platform')
+      : schemas.filter(s => schemaProductRole(s) !== 'platform')
 
   const grouped = visibleSchemas.reduce<Record<string, typeof schemas>>((acc, s) => {
     const key = `${s.verifier_id}/${s.credential_type}`
