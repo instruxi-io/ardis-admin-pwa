@@ -370,7 +370,7 @@ class PreviewErrorBoundary extends Component<
 
 export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'platform' }) {
   const isPlatformMode = mode === 'platform'
-  const { isDeveloper, isTenantAdmin, username } = useAuth()
+  const { isDeveloper, username } = useAuth()
   const queryClient = useQueryClient()
 
   const [showImport, setShowImport] = useState(false)
