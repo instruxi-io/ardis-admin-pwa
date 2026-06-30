@@ -83,8 +83,9 @@ function parseBundle(raw: string): ViewModelBundle | null {
         // order form schema. Falls back to order schema if not provided.
         data_schema:     (schema['x-data-schema'] as Record<string, unknown>) ?? schema,
         ui_schema:       (schema['x-data-ui-schema'] as Record<string, unknown>) ?? uiSchema,
-        'x-pricing':      schema['x-pricing'],
-        'x-product-role': (schema['x-product-role'] as string) ?? '',
+        'x-pricing':          schema['x-pricing'],
+        'x-product-role':     (schema['x-product-role'] as string) ?? '',
+        'x-price-one-time':   (schema['x-price-one-time'] as number) ?? 0,
         data,
       }
     }
@@ -441,8 +442,9 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
         order_schema:      b.order_schema as Record<string, unknown>,
         order_ui_schema:   (b.order_ui_schema as Record<string, unknown>) ?? {},
         display_schema_path: `display-schemas/${verifierId}/${credentialType}/${version}/schema.json`,
-        x_pricing:    (b['x-pricing'] ?? (b as any).x_pricing),
-        product_role: (b as any)['x-product-role'] ?? '',
+        x_pricing:      (b['x-pricing'] ?? (b as any).x_pricing),
+        product_role:   (b as any)['x-product-role'] ?? '',
+        price_one_time: (b as any)['x-price-one-time'] ?? 0,
       } as any)
     },
     onSuccess: () => {
@@ -923,8 +925,25 @@ function SchemaGroup({ verifierId, credentialType, versions, product, isPlatform
   onDownload?: (verifierId: string, credentialType: string, version: string, name: string) => void
 }) {
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [previewSchema, setPreviewSchema] = useState<{ data_schema: Record<string, unknown>; ui_schema: Record<string, unknown> } | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+
   const live    = versions[0]   // most recent — always the live version
   const history = versions.slice(1) // older versions
+
+  const handlePreview = async () => {
+    if (previewOpen) { setPreviewOpen(false); return; }
+    if (previewSchema) { setPreviewOpen(true); return; }
+    setPreviewLoading(true)
+    try {
+      const data = await schemasApi.get(verifierId, credentialType, live.version)
+      setPreviewSchema(data)
+      setPreviewOpen(true)
+    } catch { /* silent */ } finally {
+      setPreviewLoading(false)
+    }
+  }
 
   return (
     <div className="border-b border-border last:border-0">
@@ -989,6 +1008,15 @@ function SchemaGroup({ verifierId, credentialType, versions, product, isPlatform
             <span className="text-xs text-muted-foreground">
               {history.length > 0 ? `+${history.length} prior` : 'first version'}
             </span>
+            <button
+              type="button"
+              onClick={handlePreview}
+              disabled={previewLoading}
+              className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
+              title="Preview credential rendering"
+            >
+              <Eye size={12} /> {previewLoading ? 'Loading…' : previewOpen ? 'Hide' : 'Preview'}
+            </button>
             {onDownload && (
               <button
                 type="button"
@@ -1000,6 +1028,20 @@ function SchemaGroup({ verifierId, credentialType, versions, product, isPlatform
               </button>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ── Inline credential preview ── */}
+      {previewOpen && previewSchema && (
+        <div className="mx-6 mb-3 rounded-lg border border-border bg-muted/10 p-4">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Credential Preview</p>
+          <PreviewErrorBoundary label="Credential preview">
+            <CredentialPreview
+              schema={(previewSchema.data_schema as Record<string, unknown>) ?? {}}
+              uiSchema={(previewSchema.ui_schema as Record<string, unknown>) ?? {}}
+              data={{}}
+            />
+          </PreviewErrorBoundary>
         </div>
       )}
 
