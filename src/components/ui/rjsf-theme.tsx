@@ -30,13 +30,11 @@ export function FieldTemplate({
   displayLabel,
 }: FieldTemplateProps) {
   if (hidden) return <>{children}</>
-  // Suppress RJSF's auto-generated array item index labels.
-  // RJSF generates these as "{ArrayTitle}-{index+1}" (e.g. "Records-1").
-  // We identify them by the field ID containing "_" followed by digits at the end,
-  // which is how RJSF constructs array item IDs (root_records_0, root_records_1, etc).
-  // We don't suppress based on label text since that could falsely match vendor fields.
-  const isArrayItemRoot = /^root(_\w+)?_\d+$/.test(id)
-  if (isArrayItemRoot && displayLabel) return <>{children}</>
+  // Suppress RJSF's auto-generated array item labels (e.g. "Verification Records-1").
+  // These match the pattern "{Title}-{number}" and always have an ID ending in _\d+
+  // at the array item level.
+  const isAutoArrayItemLabel = displayLabel && /^.+[-\s]\d+$/.test(label ?? '')
+  if (isAutoArrayItemLabel) return <>{children}</>
   return (
     <div className="space-y-1.5">
       {displayLabel && label && (
@@ -158,7 +156,7 @@ export function ArrayFieldTemplate({ title, items }: ArrayFieldTemplateProps) {
 
 // ── Readonly value display ────────────────────────────────────────────────────
 
-function ReadonlyValue({ label, value }: { label?: string; value: string }) {
+function ReadonlyValue({ value }: { label?: string; value: string }) {
   // Don't render empty fields — keeps credential card clean
   if (!value || value.trim() === '') return null
   return (
@@ -173,8 +171,8 @@ function ReadonlyValue({ label, value }: { label?: string; value: string }) {
 
 // ── Text widget ───────────────────────────────────────────────────────────────
 
-export function TextWidget({ id, value, onChange, readonly, disabled, rawErrors, schema }: WidgetProps) {
-  if (readonly || disabled) {
+export function TextWidget({ id, value, onChange, readonly, disabled, rawErrors, schema, uiSchema }: WidgetProps) {
+  if (readonly || disabled || uiSchema?.['ui:readonly']) {
     let display = value ?? ''
     if (schema.format === 'date' && display) {
       const d = new Date(display)
@@ -182,6 +180,9 @@ export function TextWidget({ id, value, onChange, readonly, disabled, rawErrors,
         display = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
       }
     }
+    // Return null for empty values — FieldTemplate will still render the label.
+    // Hide both by wrapping in a fragment that returns null entirely.
+    if (!display || String(display).trim() === '') return null
     return <ReadonlyValue value={String(display)} />
   }
   return (
