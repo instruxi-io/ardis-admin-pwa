@@ -156,14 +156,10 @@ export function ArrayFieldTemplate({ title, items }: ArrayFieldTemplateProps) {
 
 // ── Readonly value display ────────────────────────────────────────────────────
 
-function ReadonlyValue({ value }: { label?: string; value: string }) {
-  // Don't render empty fields — keeps credential card clean
+function ReadonlyValue({ value }: { value: string }) {
   if (!value || value.trim() === '') return null
   return (
     <div className="flex items-start gap-2 py-1">
-      {label && (
-        <span className="text-xs text-muted-foreground w-36 shrink-0">{label}</span>
-      )}
       <span className="text-sm font-medium text-foreground">{value}</span>
     </div>
   )
