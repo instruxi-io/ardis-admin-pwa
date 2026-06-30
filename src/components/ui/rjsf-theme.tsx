@@ -140,7 +140,12 @@ export function ObjectFieldTemplate({
 
 // ── Array field template ───────────────────────────────────────────────────────
 
-export function ArrayFieldTemplate({ title, items }: ArrayFieldTemplateProps) {
+export function ArrayFieldTemplate({ title, items, registry }: ArrayFieldTemplateProps) {
+  // Use the registry's ArrayFieldItemTemplate to render each item — this is
+  // the correct RJSF v5 pattern. Rendering item.children directly doesn't work
+  // because RJSF needs the item template's context to resolve nested widgets.
+  const ArrayFieldItemTemplate = registry.templates.ArrayFieldItemTemplate
+
   return (
     <div className="space-y-2">
       {title && (
@@ -149,15 +154,11 @@ export function ArrayFieldTemplate({ title, items }: ArrayFieldTemplateProps) {
           <div className="flex-1 h-px bg-border" />
         </div>
       )}
-      {items.map((item, i) => {
-        // Destructure children directly — (item as any).children was unreliable
-        const { key, children } = item as typeof item & { children: React.ReactElement }
-        return (
-          <div key={key} className={i > 0 ? 'pt-2 border-t border-border/40' : ''}>
-            {children}
-          </div>
-        )
-      })}
+      {items.map((item, i) => (
+        <div key={item.key} className={i > 0 ? 'pt-2 border-t border-border/40' : ''}>
+          <ArrayFieldItemTemplate {...item} />
+        </div>
+      ))}
     </div>
   )
 }
