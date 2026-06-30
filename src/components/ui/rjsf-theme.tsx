@@ -30,6 +30,9 @@ export function FieldTemplate({
   displayLabel,
 }: FieldTemplateProps) {
   if (hidden) return <>{children}</>
+  // Suppress auto-generated array item labels like "Records-1", "History-2"
+  const isArrayItemLabel = /^.+-\d+$/.test(label ?? '')
+  if (isArrayItemLabel) return <>{children}</>
   return (
     <div className="space-y-1.5">
       {displayLabel && label && (
@@ -142,11 +145,15 @@ export function ArrayFieldTemplate({ title, items }: ArrayFieldTemplateProps) {
           <div className="flex-1 h-px bg-border" />
         </div>
       )}
-      {items.map((item, i) => (
-        <div key={item.key} className={i > 0 ? 'pt-2 border-t border-border/40' : ''}>
-          {(item as any).children}
-        </div>
-      ))}
+      {items.map((item, i) => {
+        // Destructure children directly — (item as any).children was unreliable
+        const { key, children } = item as typeof item & { children: React.ReactElement }
+        return (
+          <div key={key} className={i > 0 ? 'pt-2 border-t border-border/40' : ''}>
+            {children}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -154,12 +161,14 @@ export function ArrayFieldTemplate({ title, items }: ArrayFieldTemplateProps) {
 // ── Readonly value display ────────────────────────────────────────────────────
 
 function ReadonlyValue({ label, value }: { label?: string; value: string }) {
+  // Don't render empty fields — keeps credential card clean
+  if (!value || value.trim() === '') return null
   return (
     <div className="flex items-start gap-2 py-1">
       {label && (
         <span className="text-xs text-muted-foreground w-36 shrink-0">{label}</span>
       )}
-      <span className="text-sm font-medium text-foreground">{value || '—'}</span>
+      <span className="text-sm font-medium text-foreground">{value}</span>
     </div>
   )
 }
