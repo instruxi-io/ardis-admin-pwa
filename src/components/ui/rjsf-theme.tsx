@@ -30,9 +30,13 @@ export function FieldTemplate({
   displayLabel,
 }: FieldTemplateProps) {
   if (hidden) return <>{children}</>
-  // Suppress auto-generated array item labels like "Records-1", "History-2"
-  const isArrayItemLabel = /^.+-\d+$/.test(label ?? '')
-  if (isArrayItemLabel) return <>{children}</>
+  // Suppress RJSF's auto-generated array item index labels.
+  // RJSF generates these as "{ArrayTitle}-{index+1}" (e.g. "Records-1").
+  // We identify them by the field ID containing "_" followed by digits at the end,
+  // which is how RJSF constructs array item IDs (root_records_0, root_records_1, etc).
+  // We don't suppress based on label text since that could falsely match vendor fields.
+  const isArrayItemRoot = /^root(_\w+)?_\d+$/.test(id)
+  if (isArrayItemRoot && displayLabel) return <>{children}</>
   return (
     <div className="space-y-1.5">
       {displayLabel && label && (
