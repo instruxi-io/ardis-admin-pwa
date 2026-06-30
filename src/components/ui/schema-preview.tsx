@@ -135,37 +135,39 @@ export function CredentialPreview({
 
         {/* Rendered schema with sample data */}
         {Object.keys(data).length > 0 ? (
-          <Form
-            schema={schema as any}
-            uiSchema={{ ...uiSchema as any, 'ui:disabled': true }}
-            formData={data}
-            validator={validator}
-            widgets={ardisWidgets}
-            templates={ardisTemplates}
-            disabled
-            onChange={() => {}}
-            onSubmit={() => {}}
-          >
-            <span />
-          </Form>
-        ) : (
-          <div className="space-y-3">
-            <p className="text-[11px] text-[#4b5563] italic text-center py-4">
-              Add a <span className="font-mono text-[#C9A84C]">data</span> field to your bundle JSON to see a live preview with sample values.
-            </p>
+          <div className="[&_button]:hidden [&_.array-item-toolbox]:hidden [&_input]:pointer-events-none [&_select]:pointer-events-none [&_textarea]:pointer-events-none">
             <Form
               schema={schema as any}
-              uiSchema={{ ...uiSchema as any, 'ui:disabled': true }}
-              formData={{}}
+              uiSchema={{ ...uiSchema as any, 'ui:readonly': true }}
+              formData={data}
               validator={validator}
               widgets={ardisWidgets}
               templates={ardisTemplates}
-              disabled
               onChange={() => {}}
               onSubmit={() => {}}
             >
               <span />
             </Form>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-[11px] text-[#4b5563] italic text-center py-4">
+              Add a <span className="font-mono text-[#C9A84C]">data</span> field to your bundle JSON to see a live preview with sample values.
+            </p>
+            <div className="[&_button]:hidden [&_.array-item-toolbox]:hidden">
+              <Form
+                schema={schema as any}
+                uiSchema={uiSchema as any}
+                formData={{}}
+                validator={validator}
+                widgets={ardisWidgets}
+                templates={ardisTemplates}
+                onChange={() => {}}
+                onSubmit={() => {}}
+              >
+                <span />
+              </Form>
+            </div>
           </div>
         )}
       </div>
