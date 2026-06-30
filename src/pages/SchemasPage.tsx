@@ -416,13 +416,14 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
       const credentialType = b.credential_type as string
       const version        = (b.version as string) ?? 'v1'
 
-      // 1. Upload display schema to Storj
+      // 1. Upload display schema to Storj (include sample data for portal preview)
       await schemasApi.publish({
         verifier_id:     verifierId,
         credential_type: credentialType,
         version,
-        data_schema: (b.data_schema  as Record<string, unknown>),
-        ui_schema:   (b.ui_schema    as Record<string, unknown>) ?? {},
+        data_schema:  (b.data_schema  as Record<string, unknown>),
+        ui_schema:    (b.ui_schema    as Record<string, unknown>) ?? {},
+        sample_data:  (b.data as Record<string, unknown>) ?? undefined,
       })
 
       // 2. Publish product to Stripe. Pass the existing Stripe product ID if one
@@ -963,7 +964,7 @@ function SchemaGroup({ verifierId, credentialType, versions, product, isPlatform
 }) {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
-  const [previewSchema, setPreviewSchema] = useState<{ data_schema: Record<string, unknown>; ui_schema: Record<string, unknown> } | null>(null)
+  const [previewSchema, setPreviewSchema] = useState<{ data_schema: Record<string, unknown>; ui_schema: Record<string, unknown>; sample_data?: Record<string, unknown> } | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [newVersionConfirm, setNewVersionConfirm] = useState(false)
 
@@ -1126,7 +1127,9 @@ function SchemaGroup({ verifierId, credentialType, versions, product, isPlatform
             <CredentialPreview
               schema={(previewSchema.data_schema as Record<string, unknown>) ?? {}}
               uiSchema={(previewSchema.ui_schema as Record<string, unknown>) ?? {}}
-              data={{}}
+              data={(previewSchema.sample_data as Record<string, unknown>) ?? {}}
+              verifierName={product?.verifier_name as string}
+              credentialType={credentialType}
             />
           </PreviewErrorBoundary>
         </div>
