@@ -137,16 +137,15 @@ export function CredentialPreview({
         {Object.keys(data).length > 0 ? (
           <Form
             schema={schema as any}
-            uiSchema={uiSchema as any}
+            uiSchema={{ ...uiSchema as any, 'ui:disabled': true }}
             formData={data}
             validator={validator}
             widgets={ardisWidgets}
             templates={ardisTemplates}
-            readonly
+            disabled
             onChange={() => {}}
             onSubmit={() => {}}
           >
-            {/* No submit button in read-only mode */}
             <span />
           </Form>
         ) : (
@@ -154,15 +153,14 @@ export function CredentialPreview({
             <p className="text-[11px] text-[#4b5563] italic text-center py-4">
               Add a <span className="font-mono text-[#C9A84C]">data</span> field to your bundle JSON to see a live preview with sample values.
             </p>
-            {/* Show field structure without data */}
             <Form
               schema={schema as any}
-              uiSchema={uiSchema as any}
+              uiSchema={{ ...uiSchema as any, 'ui:disabled': true }}
               formData={{}}
               validator={validator}
               widgets={ardisWidgets}
               templates={ardisTemplates}
-              readonly
+              disabled
               onChange={() => {}}
               onSubmit={() => {}}
             >
