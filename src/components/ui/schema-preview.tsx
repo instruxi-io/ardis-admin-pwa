@@ -135,7 +135,7 @@ export function CredentialPreview({
 
         {/* Rendered schema with sample data */}
         {Object.keys(data).length > 0 ? (
-          <div className="[&_button]:hidden [&_.array-item-toolbox]:hidden [&_input]:pointer-events-none [&_select]:pointer-events-none [&_textarea]:pointer-events-none [&_.space-y-1\\.5:not(:has(*))]:hidden">
+          <div className="[&_button]:hidden [&_.array-item-toolbox]:hidden [&_input]:pointer-events-none [&_select]:pointer-events-none [&_textarea]:pointer-events-none">
             <Form
               schema={schema as any}
               uiSchema={{ ...uiSchema as any, 'ui:readonly': true }}
