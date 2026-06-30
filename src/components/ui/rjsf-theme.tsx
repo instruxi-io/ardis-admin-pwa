@@ -166,8 +166,8 @@ function ReadonlyValue({ label, value }: { label?: string; value: string }) {
 
 // ── Text widget ───────────────────────────────────────────────────────────────
 
-export function TextWidget({ id, value, onChange, readonly, rawErrors, schema }: WidgetProps) {
-  if (readonly) {
+export function TextWidget({ id, value, onChange, readonly, disabled, rawErrors, schema }: WidgetProps) {
+  if (readonly || disabled) {
     let display = value ?? ''
     if (schema.format === 'date' && display) {
       const d = new Date(display)
@@ -192,10 +192,10 @@ export function TextWidget({ id, value, onChange, readonly, rawErrors, schema }:
 
 // ── Select widget (enum fields) ───────────────────────────────────────────────
 
-export function SelectWidget({ id, value, onChange, readonly, options, rawErrors }: WidgetProps) {
+export function SelectWidget({ id, value, onChange, readonly, disabled, options, rawErrors }: WidgetProps) {
   const enumOptions = (options.enumOptions ?? []) as { value: string; label: string }[]
 
-  if (readonly) {
+  if (readonly || disabled) {
     const found = enumOptions.find(o => o.value === value)
     return <ReadonlyValue value={found?.label ?? String(value ?? '—')} />
   }
