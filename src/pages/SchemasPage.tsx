@@ -560,6 +560,41 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
     }
   }
 
+  // Load a published bundle back into the import wizard for creating a new version.
+  const loadForNewVersion = async (verifierId: string, credentialType: string, version: string, name: string) => {
+    try {
+      const content = await schemasApi.get(verifierId, credentialType, version)
+      const product = productIndex[`${verifierId}/${credentialType}`]
+      // Reconstruct the full bundle JSON with all x- fields from the product
+      const obj1: Record<string, unknown> = {
+        '$id':             `${verifierId}/${credentialType}/${version}`,
+        'title':           name,
+        'description':     (product as any)?.description ?? '',
+        'x-verifier-id':   verifierId,
+        'x-verifier-name': (product as any)?.verifier_name ?? verifierId,
+        'x-credential-type': credentialType,
+        'x-order-type':    (product as any)?.order_type ?? 'license',
+        'x-version':       version,
+        'type':            'object',
+        'properties':      (content.data_schema as any)?.properties ?? {},
+        'x-data-schema':   content.data_schema ?? {},
+        'x-data-ui-schema': content.ui_schema ?? {},
+      }
+      if ((product as any)?.x_pricing) obj1['x-pricing'] = (product as any).x_pricing
+      if ((product as any)?.price_one_time) obj1['x-price-one-time'] = (product as any).price_one_time
+      if ((product as any)?.product_role) obj1['x-product-role'] = (product as any).product_role
+
+      const bundle = [obj1, content.ui_schema ?? {}, {}]
+      const text = bundle.map(o => JSON.stringify(o, null, 2)).join('\n')
+
+      setFileRaw(text)
+      setShowImport(true)
+      toast.success(`Loaded ${name} — review and publish to create a new version`)
+    } catch {
+      toast.error('Failed to load schema for editing')
+    }
+  }
+
   // product_role lives on the product, not the schema index entry.
   // Use productIndex to check it when filtering schemas.
   const schemaProductRole = (s: typeof schemas[0]) => {
@@ -770,6 +805,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                       }).catch(() => toast.error('Archive failed'))
                     }}
                     onDownload={downloadPublishedBundle}
+                    onNewVersion={loadForNewVersion}
                   />
                 )
               }
@@ -915,7 +951,7 @@ function PricingMapper({ bundle }: { bundle: ViewModelBundle }) {
 
 // ── Registry group ────────────────────────────────────────────────────────────
 
-function SchemaGroup({ verifierId, credentialType, versions, product, isPlatform, onArchive, onDownload }: {
+function SchemaGroup({ verifierId, credentialType, versions, product, isPlatform, onArchive, onDownload, onNewVersion }: {
   verifierId: string
   credentialType: string
   versions: SchemaIndexEntry[]
@@ -923,14 +959,22 @@ function SchemaGroup({ verifierId, credentialType, versions, product, isPlatform
   isPlatform?: boolean
   onArchive?: (id: string) => void
   onDownload?: (verifierId: string, credentialType: string, version: string, name: string) => void
+  onNewVersion?: (verifierId: string, credentialType: string, version: string, name: string) => void
 }) {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewSchema, setPreviewSchema] = useState<{ data_schema: Record<string, unknown>; ui_schema: Record<string, unknown> } | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
+  const [newVersionConfirm, setNewVersionConfirm] = useState(false)
 
   const live    = versions[0]   // most recent — always the live version
   const history = versions.slice(1) // older versions
+
+  const handleNewVersion = () => setNewVersionConfirm(true)
+  const confirmNewVersion = () => {
+    setNewVersionConfirm(false)
+    onNewVersion?.(verifierId, credentialType, live.version, product?.name ?? credentialType)
+  }
 
   const handlePreview = async () => {
     if (previewOpen) { setPreviewOpen(false); return; }
@@ -1017,6 +1061,16 @@ function SchemaGroup({ verifierId, credentialType, versions, product, isPlatform
             >
               <Eye size={12} /> {previewLoading ? 'Loading…' : previewOpen ? 'Hide' : 'Preview'}
             </button>
+            {onNewVersion && (
+              <button
+                type="button"
+                onClick={handleNewVersion}
+                className="text-xs text-muted-foreground hover:text-amber-500 transition-colors flex items-center gap-1"
+                title="Create a new version of this view model"
+              >
+                <Upload size={12} /> New Version
+              </button>
+            )}
             {onDownload && (
               <button
                 type="button"
@@ -1027,6 +1081,39 @@ function SchemaGroup({ verifierId, credentialType, versions, product, isPlatform
                 <Database size={12} /> Load
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── New version confirmation dialog ── */}
+      {newVersionConfirm && (
+        <div className="mx-6 mb-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
+          <div className="flex items-start gap-2">
+            <AlertCircle size={14} className="text-amber-500 mt-0.5 shrink-0" />
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-amber-600">View models are immutable</p>
+              <p className="text-xs text-muted-foreground">
+                Publishing will create a new version (<span className="font-mono">v{(parseInt(live.version.replace('v','')) + 1) || 2}</span>) alongside the existing one.
+                The app always fetches <span className="font-mono">/latest</span> so your update applies immediately to all credentials of this type.
+                The current version remains in history for reference.
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button
+              type="button"
+              onClick={() => setNewVersionConfirm(false)}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded border border-border"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirmNewVersion}
+              className="text-xs font-medium text-amber-600 hover:text-amber-500 transition-colors px-3 py-1.5 rounded border border-amber-500/40 bg-amber-500/10"
+            >
+              Load for editing → New Version
+            </button>
           </div>
         </div>
       )}
