@@ -376,12 +376,15 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
 
   const [showImport, setShowImport] = useState(false)
   const [fileRaw, setFileRaw] = useState<string | null>(null)
-  const [showPreview, setShowPreview] = useState(false)
+  const [editedRaw, setEditedRaw] = useState<string | null>(null)
   const [pendingBundle, setPendingBundle] = useState<ViewModelBundle | null>(null)
+  const [publishConfirmed, setPublishConfirmed] = useState(false)
 
   const IS_PROD = env.APP_ENV === 'production'
 
-  const bundle: ViewModelBundle | null = fileRaw ? parseBundle(fileRaw) : null
+  // Parse from editedRaw (user edits) if present, otherwise from uploaded fileRaw
+  const activeRaw = editedRaw ?? fileRaw
+  const bundle: ViewModelBundle | null = activeRaw ? parseBundle(activeRaw) : null
 
   const validation = bundle ? validateBundle(bundle) : null
 
@@ -460,19 +463,21 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
   const resetImport = () => {
     setShowImport(false)
     setFileRaw(null)
-    setShowPreview(false)
+    setEditedRaw(null)
     setPendingBundle(null)
+    setPublishConfirmed(false)
   }
 
   const handlePublish = () => {
     if (!effectiveBundle) return
+    if (!publishConfirmed) return
     // Developers may never publish platform-role products.
     if (isDeveloper && (effectiveBundle as any)['x-product-role'] === 'platform') {
       toast.error('Platform subscription products may only be published by a tenant admin.')
       return
     }
     if (IS_PROD) setPendingBundle(effectiveBundle)
-    else publishMutation.mutate(effectiveBundle)
+    else { publishMutation.mutate(effectiveBundle); setPublishConfirmed(false) }
   }
 
   // ── Download helpers ─────────────────────────────────────────────────────
@@ -670,9 +675,34 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">1 — Upload</p>
                 <DropZone
                   file={fileRaw}
-                  onFile={raw => { setFileRaw(raw || null); setShowPreview(false) }}
+                  onFile={raw => { setFileRaw(raw || null); setEditedRaw(null); setPublishConfirmed(false) }}
                 />
               </div>
+
+              {/* Raw JSON editor — always shown after upload */}
+              {fileRaw && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Bundle JSON</p>
+                    {editedRaw && editedRaw !== fileRaw && (
+                      <button
+                        type="button"
+                        onClick={() => { setEditedRaw(null); setPublishConfirmed(false) }}
+                        className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                      >
+                        Reset to original
+                      </button>
+                    )}
+                  </div>
+                  <textarea
+                    className="w-full h-64 font-mono text-xs bg-muted/20 border border-border rounded-lg p-3 text-foreground resize-y focus:outline-none focus:ring-1 focus:ring-ring"
+                    value={editedRaw ?? fileRaw}
+                    onChange={e => { setEditedRaw(e.target.value); setPublishConfirmed(false) }}
+                    spellCheck={false}
+                  />
+                  <p className="text-[11px] text-muted-foreground">Edit directly above — validation and preview update automatically.</p>
+                </div>
+              )}
 
               {/* Step 2 — Validate */}
               {bundle && validation && (
@@ -683,27 +713,17 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                     <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
                       <AlertCircle size={14} className="text-amber-500 mt-0.5 shrink-0" />
                       <p className="text-xs text-amber-600">
-                        Share these validation results with the vendor so they can correct the file before re-submitting.
+                        Fix the issues above before publishing. Edit the JSON directly or upload a corrected file.
                       </p>
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Step 3 — Preview */}
+              {/* Step 3 — Preview (always visible when validation passes) */}
               {validation?.pass && effectiveBundle && (
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">3 — Preview</p>
-                    <button
-                      type="button"
-                      onClick={() => setShowPreview(v => !v)}
-                      className="flex items-center gap-1.5 text-xs text-primary hover:underline"
-                    >
-                      <Eye size={12} />
-                      {showPreview ? 'Hide preview' : 'Show app preview'}
-                    </button>
-                  </div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">3 — Preview</p>
 
                   {/* Summary */}
                   <div className="grid grid-cols-4 gap-3 p-3 bg-muted/20 rounded-lg border border-border text-xs">
@@ -713,37 +733,36 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                     </div>
                     <div>
                       <span className="text-muted-foreground/60 uppercase text-[10px] tracking-wide">Verifier ID</span>
-                      <p className="font-mono mt-0.5">{effectiveBundle.verifier_id as string}</p>
+                      <p className="font-mono mt-0.5 text-primary">{effectiveBundle.verifier_id as string}</p>
                     </div>
                     <div>
                       <span className="text-muted-foreground/60 uppercase text-[10px] tracking-wide">Credential Type</span>
-                      <p className="font-mono mt-0.5">{effectiveBundle.credential_type as string}</p>
+                      <p className="font-mono mt-0.5 text-primary">{effectiveBundle.credential_type as string}</p>
                     </div>
                     <div>
                       <span className="text-muted-foreground/60 uppercase text-[10px] tracking-wide">Version</span>
-                      <p className="font-mono mt-0.5">{(effectiveBundle.version as string) ?? 'v1'}</p>
+                      <p className="font-mono mt-0.5 text-primary">{(effectiveBundle.version as string) ?? 'v1'}</p>
                     </div>
                   </div>
 
-                  {showPreview && (
-                    <div className="grid grid-cols-2 gap-6 py-6 px-4 bg-muted/20 rounded-xl border border-border overflow-x-auto">
-                      <PreviewErrorBoundary label="Order form">
-                        <OrderFormPreview
-                          schema={(effectiveBundle.order_schema as Record<string, unknown>) ?? {}}
-                          uiSchema={(effectiveBundle.order_ui_schema as Record<string, unknown>) ?? {}}
-                        />
-                      </PreviewErrorBoundary>
-                      <PreviewErrorBoundary label="Credential">
-                        <CredentialPreview
-                          schema={(effectiveBundle.data_schema as Record<string, unknown>) ?? {}}
-                          uiSchema={(effectiveBundle.ui_schema as Record<string, unknown>) ?? {}}
-                          data={(effectiveBundle.data as Record<string, unknown>) ?? {}}
-                          verifierName={effectiveBundle.verifier_name as string}
-                          credentialType={effectiveBundle.credential_type as string}
-                        />
-                      </PreviewErrorBoundary>
-                    </div>
-                  )}
+                  {/* Always-on preview */}
+                  <div className="grid grid-cols-2 gap-6 py-6 px-4 bg-muted/20 rounded-xl border border-border overflow-x-auto">
+                    <PreviewErrorBoundary label="Order form">
+                      <OrderFormPreview
+                        schema={(effectiveBundle.order_schema as Record<string, unknown>) ?? {}}
+                        uiSchema={(effectiveBundle.order_ui_schema as Record<string, unknown>) ?? {}}
+                      />
+                    </PreviewErrorBoundary>
+                    <PreviewErrorBoundary label="Credential">
+                      <CredentialPreview
+                        schema={(effectiveBundle.data_schema as Record<string, unknown>) ?? {}}
+                        uiSchema={(effectiveBundle.ui_schema as Record<string, unknown>) ?? {}}
+                        data={(effectiveBundle.data as Record<string, unknown>) ?? {}}
+                        verifierName={effectiveBundle.verifier_name as string}
+                        credentialType={effectiveBundle.credential_type as string}
+                      />
+                    </PreviewErrorBoundary>
+                  </div>
                 </div>
               )}
 
@@ -752,15 +771,62 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                 <PricingMapper bundle={effectiveBundle} />
               )}
 
-              {/* Step 5 — Publish */}
-              {validation?.pass && (
-                <div className="flex items-center gap-3 pt-2 border-t border-border">
-                  <Button onClick={handlePublish} disabled={publishMutation.isPending} size="sm">
-                    {publishMutation.isPending ? 'Publishing…' : 'Publish'}
-                  </Button>
-                  <p className="text-xs text-muted-foreground">
-                    Uploads schemas to Storj · Creates product in Stripe
-                  </p>
+              {/* Step 5 — Publish gate */}
+              {validation?.pass && effectiveBundle && (
+                <div className="space-y-4 pt-2 border-t border-border">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">5 — Publish</p>
+
+                  {/* Confirmation details */}
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle size={14} className="text-amber-500 mt-0.5 shrink-0" />
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-amber-600">Review before publishing</p>
+                        <p className="text-xs text-muted-foreground">
+                          Publishing will create or update the following in Stripe and Storj. This cannot be undone — a new version must be published to make changes.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 text-xs">
+                      <div className="bg-background/60 rounded p-2">
+                        <span className="text-muted-foreground/60 uppercase text-[10px] tracking-wide block">Verifier ID</span>
+                        <span className="font-mono font-semibold text-foreground">{effectiveBundle.verifier_id as string}</span>
+                      </div>
+                      <div className="bg-background/60 rounded p-2">
+                        <span className="text-muted-foreground/60 uppercase text-[10px] tracking-wide block">Schema</span>
+                        <span className="font-mono font-semibold text-foreground">{effectiveBundle.credential_type as string}/{(effectiveBundle.version as string) ?? 'v1'}</span>
+                      </div>
+                      <div className="bg-background/60 rounded p-2">
+                        <span className="text-muted-foreground/60 uppercase text-[10px] tracking-wide block">Product</span>
+                        <span className="font-mono font-semibold text-foreground truncate block">{effectiveBundle.name as string}</span>
+                      </div>
+                    </div>
+                    {/* Confirmation checkbox */}
+                    <label className="flex items-start gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={publishConfirmed}
+                        onChange={e => setPublishConfirmed(e.target.checked)}
+                        className="mt-0.5 accent-amber-500"
+                      />
+                      <span className="text-xs text-muted-foreground">
+                        I have reviewed the preview above, tested this schema in a dev environment, and confirm this is ready to publish.
+                      </span>
+                    </label>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <Button
+                      onClick={handlePublish}
+                      disabled={publishMutation.isPending || !publishConfirmed}
+                      size="sm"
+                    >
+                      {publishMutation.isPending ? 'Publishing…' : 'Publish to Storj & Stripe'}
+                    </Button>
+                    <p className="text-xs text-muted-foreground">
+                      {!publishConfirmed ? 'Check the box above to enable publish' : 'Ready to publish'}
+                    </p>
+                  </div>
                 </div>
               )}
 
