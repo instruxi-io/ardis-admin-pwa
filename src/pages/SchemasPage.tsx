@@ -704,26 +704,10 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                 </div>
               )}
 
-              {/* Step 2 — Validate */}
-              {bundle && validation && (
+              {/* Step 2 — Preview (always visible as soon as bundle parses) */}
+              {bundle && effectiveBundle && (
                 <div className="space-y-3">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">2 — Validate</p>
-                  <ValidationPanel result={validation} />
-                  {!validation.pass && (
-                    <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
-                      <AlertCircle size={14} className="text-amber-500 mt-0.5 shrink-0" />
-                      <p className="text-xs text-amber-600">
-                        Fix the issues above before publishing. Edit the JSON directly or upload a corrected file.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Step 3 — Preview (always visible when validation passes) */}
-              {validation?.pass && effectiveBundle && (
-                <div className="space-y-3">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">3 — Preview</p>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">2 — Preview</p>
 
                   {/* Summary */}
                   <div className="grid grid-cols-4 gap-3 p-3 bg-muted/20 rounded-lg border border-border text-xs">
@@ -763,6 +747,22 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                       />
                     </PreviewErrorBoundary>
                   </div>
+                </div>
+              )}
+
+              {/* Step 3 — Validate */}
+              {bundle && validation && (
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">3 — Validate</p>
+                  <ValidationPanel result={validation} />
+                  {!validation.pass && (
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
+                      <AlertCircle size={14} className="text-amber-500 mt-0.5 shrink-0" />
+                      <p className="text-xs text-amber-600">
+                        Fix the issues above before publishing. Edit the JSON directly or upload a corrected file.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
