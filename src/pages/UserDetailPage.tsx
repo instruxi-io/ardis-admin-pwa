@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
-import { ArrowLeft, UserCheck, UserX, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, UserCheck, UserX } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 
 export default function UserDetailPage() {
@@ -41,16 +41,6 @@ export default function UserDetailPage() {
   const deactivateMutation = useMutation({
     mutationFn: () => getEnforcerApiClient().put<BaseResponse>(`admin/users/${id}/deactivate`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin', 'users', id] }); toast.success('User deactivated') },
-    onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed'),
-  })
-
-  const verifyContactMutation = useMutation({
-    mutationFn: () =>
-      getEnforcerApiClient().post<BaseResponse>('admin/users/verify-contact', {
-        user_id: id,
-        email_verified: true,
-      }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin', 'users', id] }); toast.success('Email marked as verified') },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed'),
   })
 
@@ -125,11 +115,6 @@ export default function UserDetailPage() {
                 ) : (
                   <Button variant="outline" size="sm" className="w-full justify-start gap-2" onClick={() => activateMutation.mutate()} disabled={activateMutation.isPending}>
                     <UserCheck size={14} /> Activate user
-                  </Button>
-                )}
-                {!user.email_verified && (
-                  <Button variant="outline" size="sm" className="w-full justify-start gap-2" onClick={() => verifyContactMutation.mutate()} disabled={verifyContactMutation.isPending}>
-                    <ShieldCheck size={14} /> Mark email verified
                   </Button>
                 )}
               </CardContent>
