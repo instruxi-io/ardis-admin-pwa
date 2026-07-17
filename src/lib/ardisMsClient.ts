@@ -114,20 +114,22 @@ export const productsApi = {
 }
 
 export const schemasApi = {
+  // ardis-ms registers these as /credential-schemas (renamed from
+  // display-schemas). The path here must match or the list comes back empty.
   list: async (): Promise<SchemaIndexEntry[]> => {
-    const res = await ardisMsClient.get<SchemaListResponse>('/display-schemas')
+    const res = await ardisMsClient.get<SchemaListResponse>('/credential-schemas')
     return res.data.data ?? []
   },
 
   get: async (verifierId: string, credentialType: string, version: string): Promise<SchemaContent> => {
     const res = await ardisMsClient.get<{ success: boolean; data: SchemaContent }>(
-      `/public/display-schemas/${verifierId}/${credentialType}/${version}`
+      `/public/credential-schemas/${verifierId}/${credentialType}/${version}`
     )
     return res.data.data
   },
 
   publish: async (payload: PublishSchemaPayload): Promise<SchemaIndexEntry> => {
-    const res = await ardisMsClient.post<{ success: boolean; data: SchemaIndexEntry }>('/display-schemas', payload)
+    const res = await ardisMsClient.post<{ success: boolean; data: SchemaIndexEntry }>('/credential-schemas', payload)
     return res.data.data
   },
 }
