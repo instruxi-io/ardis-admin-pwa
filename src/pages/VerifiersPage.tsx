@@ -66,8 +66,11 @@ export default function VerifiersPage() {
 
   const onboardMutation = useMutation({
     mutationFn: async (values: OnboardValues) => {
-      // Create the user with Developer role and their verifier_id as username.
-      await getEnforcerApiClient().post('admin/users', {
+      if (!activeTenantId) throw new Error('No active tenant selected')
+      const client = getEnforcerApiClient()
+
+      // 1. Create the developer user account.
+      const userRes = await client.post<{ data: { id: string } }>('admin/users', {
         email: values.email,
         username: values.verifier_id,
         first_name: values.first_name || undefined,
@@ -75,10 +78,41 @@ export default function VerifiersPage() {
         role_id: DEVELOPER_ROLE_ID,
         active: true,
       })
+      const userId = userRes.data.id
+
+      // 2. Create the vendor's Enforcer group. The vendor is identified by the
+      // verifier_id in the group METADATA — not the slug, which Enforcer derives
+      // from the name and does not let us set. The name is suffixed so its
+      // derived slug is unlikely to collide with the globally-unique slug space.
+      const groupRes = await client.post<{ data: { id: string } }>('admin/groups', {
+        name: `${values.verifier_id} vendor`,
+        description: `Vendor group for verifier_id "${values.verifier_id}"`,
+        tenant_id: activeTenantId,
+      })
+      const groupId = groupRes.data.id
+
+      // 3. Stamp the vendor identity onto the group metadata. Membership in this
+      // group carrying this verifier_id is what authorises a developer to act for
+      // it (ardis-ms reads verifier_id from getMyGroups).
+      await client.patch(`admin/groups/${groupId}/metadata`, {
+        add: {
+          verifier_id: values.verifier_id,
+          status: 'active',
+          display_name:
+            [values.first_name, values.last_name].filter(Boolean).join(' ') || values.verifier_id,
+        },
+      })
+
+      // 4. Add the developer to the vendor group.
+      await client.post(`admin/groups/${groupId}/users`, {
+        group_id: groupId,
+        user_id: userId,
+      })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['verifiers'] })
-      toast.success('Verifier onboarded — they can now log in and publish products/schemas.')
+      queryClient.invalidateQueries({ queryKey: ['tenant-members-verifiers', activeTenantId] })
+      toast.success('Verifier onboarded — user and vendor group created; they can log in and publish under their verifier_id.')
       setShowForm(false)
       reset()
     },
