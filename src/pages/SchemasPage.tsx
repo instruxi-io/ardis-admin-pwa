@@ -135,9 +135,9 @@ function validateBundle(obj: ViewModelBundle): ValidationResult {
       message: 'verifier_id must be lowercase letters, numbers, and hyphens only',
     },
     {
-      label: 'order_type is valid (license, sanction, or subscription)',
-      pass: !obj.order_type || ['license', 'sanction', 'subscription'].includes(obj.order_type as string),
-      message: 'order_type must be "license", "sanction", or "subscription"',
+      label: 'order_type is a valid slug (product-agnostic — vendors define their own)',
+      pass: !obj.order_type || /^[a-z0-9-]+$/.test(obj.order_type as string),
+      message: 'order_type must be lowercase letters, numbers, and hyphens only (no fixed list)',
     },
     // ── Order schema ──
     {
