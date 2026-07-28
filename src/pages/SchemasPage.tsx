@@ -116,6 +116,38 @@ interface ValidationResult {
 
 // ── Validation ────────────────────────────────────────────────────────────────
 
+// A 409 from the credential-schema endpoint means that version is already
+// published. Immutability is deliberate, so this is a normal outcome when only
+// the product changed, not a failure.
+function isConflict(err: unknown): boolean {
+  return (err as { response?: { status?: number } })?.response?.status === 409
+}
+
+// Structural comparison of two published schemas. Key order is irrelevant, so
+// JSON.stringify would report false differences on an unchanged schema and send
+// the user off to bump a version for no reason.
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (typeof a !== typeof b || a === null || b === null) return false
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false
+    return a.every((v, i) => deepEqual(v, b[i]))
+  }
+  if (typeof a !== 'object') return false
+  const ka = Object.keys(a as object)
+  const kb = Object.keys(b as object)
+  if (ka.length !== kb.length) return false
+  return ka.every(k =>
+    Object.prototype.hasOwnProperty.call(b as object, k) &&
+    deepEqual((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]))
+}
+
+// "v1" -> "v2", so the error message can name the version to bump to.
+function nextVersion(v: string): string {
+  const m = /^v(\d+)$/.exec(v)
+  return m ? `v${Number(m[1]) + 1}` : 'v2'
+}
+
 function validateBundle(obj: ViewModelBundle): ValidationResult {
   const orderSchema = (obj.order_schema as Record<string, unknown>) ?? {}
   const dataSchema  = (obj.data_schema  as Record<string, unknown>) ?? {}
@@ -379,6 +411,10 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
   const [editedRaw, setEditedRaw] = useState<string | null>(null)
   const [pendingBundle, setPendingBundle] = useState<ViewModelBundle | null>(null)
   const [publishConfirmed, setPublishConfirmed] = useState(false)
+  // What happened to the credential schema half of a publish: published, or
+  // already published and unchanged. Surfaced so a product-only update does not
+  // look like it silently skipped the schema.
+  const [schemaOutcome, setSchemaOutcome] = useState<string | null>(null)
 
   const IS_PROD = env.APP_ENV === 'production'
 
@@ -419,15 +455,54 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
       const credentialType = b.credential_type as string
       const version        = (b.version as string) ?? 'v1'
 
-      // 1. Upload display schema to Storj (include sample data for portal preview)
-      await schemasApi.publish({
-        verifier_id:     verifierId,
-        credential_type: credentialType,
-        version,
-        data_schema:  (b.data_schema  as Record<string, unknown>),
-        ui_schema:    (b.ui_schema    as Record<string, unknown>) ?? {},
-        sample_data:  (b.data as Record<string, unknown>) ?? undefined,
-      })
+      // 1. Publish the credential schema.
+      //
+      // Credential schemas are immutable per version, so re-publishing an
+      // existing version returns 409. That is expected whenever someone is
+      // editing only the product side — a price, the name, the order form — and
+      // it must NOT abort the publish, or a price change becomes impossible
+      // without minting a credential schema version nobody asked for.
+      //
+      // But a 409 can mean two different things, and they need opposite
+      // outcomes: the schema is unchanged (fine, carry on to the product), or
+      // the schema was edited and the version wasn't bumped (a real error, and
+      // silently proceeding would leave the bundle and the published schema
+      // disagreeing). So on 409 we fetch what is published and compare.
+      const desiredSchema = {
+        data_schema: (b.data_schema as Record<string, unknown>),
+        ui_schema:   (b.ui_schema   as Record<string, unknown>) ?? {},
+        sample_data: (b.data        as Record<string, unknown>) ?? undefined,
+      }
+
+      try {
+        await schemasApi.publish({
+          verifier_id:     verifierId,
+          credential_type: credentialType,
+          version,
+          ...desiredSchema,
+        })
+        setSchemaOutcome(`Credential schema ${credentialType}/${version} published.`)
+      } catch (err) {
+        if (!isConflict(err)) throw err
+
+        const published = await schemasApi.get(verifierId, credentialType, version)
+        const changed =
+          !deepEqual(published.data_schema, desiredSchema.data_schema) ||
+          !deepEqual(published.ui_schema ?? {}, desiredSchema.ui_schema)
+
+        if (changed) {
+          throw new Error(
+            `Credential schema ${credentialType}/${version} is already published and ` +
+            `cannot be changed. Your bundle's credential schema differs from it — ` +
+            `bump x-version to publish the new shape (e.g. ${nextVersion(version)}). ` +
+            `Everything else in the bundle can be re-published freely.`
+          )
+        }
+        setSchemaOutcome(
+          `Credential schema ${credentialType}/${version} already published and unchanged — ` +
+          `updating the product only.`
+        )
+      }
 
       // 2. Publish product to Stripe. Pass the existing Stripe product ID if one
       // already exists for this verifier/credential_type so ardis-ms updates it
@@ -451,10 +526,15 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
         price_one_time: (b as any)['x-price-one-time'] ?? 0,
       } as any)
     },
+    onMutate: () => setSchemaOutcome(null),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['schemas'] })
       queryClient.invalidateQueries({ queryKey: ['products'] })
-      toast.success('View model published')
+      // Say which halves actually changed. "Published" alone is ambiguous when
+      // the credential schema was left alone because its version already exists.
+      toast.success(schemaOutcome
+        ? `Product published. ${schemaOutcome}`
+        : 'Product and credential schema published')
       resetImport()
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Publish failed'),
