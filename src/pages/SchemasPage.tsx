@@ -1150,7 +1150,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold">
-              {isPlatformMode ? 'Platform Subscription' : 'View Models'}
+              {isPlatformMode ? 'Platform Subscription' : 'Catalogue'}
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
               {isPlatformMode
@@ -1174,7 +1174,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
             <CardHeader className="pb-3">
               <CardTitle className="text-sm flex items-center gap-2">
                 <FileJson size={14} />
-                Import Credential Schema or Product
+                New product
               </CardTitle>
               {/* This described the old combined bundle — "a single JSON file" —
                   which is now the opposite of what the operator has to do, on the
@@ -1516,7 +1516,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                         : publishable.length > 1 ? `Publish ${publishable.length} files`
                         : kindOf(effectiveBundle) === 'credential-schema' ? 'Publish credential schema'
                         : kindOf(effectiveBundle) === 'product' ? 'Publish product to Stripe'
-                        : 'Publish to Storj & Stripe'}
+                        : 'Publish'}
                     </Button>
                     <p className="text-xs text-muted-foreground">
                       {!publishConfirmed ? 'Check the box above to enable publish' : 'Ready to publish'}
@@ -1896,7 +1896,7 @@ function SchemaGroup({ verifierId, credentialType, versions, products, isPlatfor
                 type="button"
                 onClick={handleNewVersion}
                 className="text-xs text-muted-foreground hover:text-amber-500 transition-colors flex items-center gap-1"
-                title="Create a new version of this view model"
+                title="Create a new version of this credential schema"
               >
                 <Upload size={12} /> New Version
               </button>

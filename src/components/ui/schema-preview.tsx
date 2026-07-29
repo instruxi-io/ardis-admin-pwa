@@ -1,5 +1,5 @@
 /**
- * Schema preview components for the View Models import page.
+ * Schema preview components for the Catalogue import panel.
  *
  * OrderFormPreview    — interactive RJSF form rendered in a phone frame.
  *                       Uses order_schema + order_ui_schema. Vendors fill in

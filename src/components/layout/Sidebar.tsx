@@ -7,7 +7,9 @@ import { Badge } from '@/components/ui/badge'
 
 // Items visible to all authenticated operators (VPs and admins).
 const vpNavItems = [
-  { to: '/schemas', icon: Layers, label: 'View Models' },
+  // "Catalogue" is what a vendor calls their products. "View model" names our
+  // rendering layer, which is not something they came here to think about.
+  { to: '/schemas', icon: Layers, label: 'Catalogue' },
 ]
 
 // Items visible to Tenant Admins (IX operators) only.

@@ -12,7 +12,7 @@ import { env } from '@/config/env'
 const IS_PROD = env.APP_ENV === 'production'
 
 // Products are managed in Stripe (source of truth for name, pricing, active state)
-// and schemas live in Storj. Use the View Models page to import a new product bundle.
+// and schemas live in Storj. Use the Catalogue page to publish a product.
 // This page shows the live Stripe product list with archive controls.
 
 export default function ProductsPage() {
@@ -50,7 +50,7 @@ export default function ProductsPage() {
             <h1 className="text-2xl font-semibold">Products</h1>
             <p className="text-sm text-muted-foreground mt-1">
               Live product catalogue from Stripe. To add a new product, import a bundle on the{' '}
-              <a href="/schemas" className="text-primary hover:underline">View Models</a> page.
+              <a href="/schemas" className="text-primary hover:underline">Catalogue</a> page.
             </p>
           </div>
           <a
@@ -80,7 +80,7 @@ export default function ProductsPage() {
                 <p className="text-sm text-muted-foreground">No active products.</p>
                 <p className="text-xs text-muted-foreground">
                   Import a JSON bundle on the{' '}
-                  <a href="/schemas" className="text-primary hover:underline">View Models</a> page to publish your first product.
+                  <a href="/schemas" className="text-primary hover:underline">Catalogue</a> page to publish your first product.
                 </p>
               </div>
             )}

@@ -1,6 +1,6 @@
 /**
  * Custom RJSF templates and widgets styled with Tailwind to match the
- * admin portal / app aesthetic. Used for view model preview in SchemasPage.
+ * admin portal / app aesthetic. Used for the credential/order previews in SchemasPage.
  *
  * Templates:   FieldTemplate, ObjectFieldTemplate, ArrayFieldTemplate
  * Widgets:     TextWidget, SelectWidget, CheckboxWidget, DateWidget
