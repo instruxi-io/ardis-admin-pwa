@@ -7,7 +7,7 @@ import {
   ChevronUp, Database, FileJson, Eye, Package
 } from 'lucide-react'
 import { OrderFormPreview, CredentialPreview } from '@/components/ui/schema-preview'
-import { schemasApi, productsApi, type SchemaIndexEntry, type ProductEntry } from '@/lib/ardisMsClient'
+import { schemasApi, productsApi, type SchemaIndexEntry, type ProductEntry, type SchemaDriftRecord } from '@/lib/ardisMsClient'
 import { useAuth } from '@/context/AuthContext'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -665,6 +665,20 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
     queryKey: ['products'],
     queryFn: productsApi.list,
   })
+
+  // Reported by the app when it renders a credential. Not gating anything, so a
+  // failure here must not blank the page — an empty list reads as "no drift",
+  // which is also the healthy state.
+  const { data: drift = [] } = useQuery({
+    queryKey: ['schema-drift'],
+    queryFn: schemasApi.drift,
+    retry: false,
+  })
+
+  const driftByVersion = drift.reduce<Record<string, SchemaDriftRecord>>((acc, d) => {
+    acc[`${d.verifier_id}/${d.credential_type}/${d.version}`] = d
+    return acc
+  }, {})
 
   const isLoading = schemasLoading || productsLoading
 
@@ -1569,6 +1583,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                     credentialType={credentialType}
                     versions={[...versions].sort((a, b) => b.version.localeCompare(a.version))}
                     products={productsByType[key] ?? []}
+                    drift={driftByVersion}
                     isPlatform={isPlatformKey(key)}
                     onArchive={(id) => {
                       productsApi.delete(id).then(() => {
@@ -1753,13 +1768,17 @@ function PricingMapper({ bundle }: { bundle: ViewModelBundle }) {
 
 // ── Registry group ────────────────────────────────────────────────────────────
 
-function SchemaGroup({ verifierId, credentialType, versions, products, isPlatform, onArchive, onDownload, onNewVersion }: {
+function SchemaGroup({ verifierId, credentialType, versions, products, drift, isPlatform, onArchive, onDownload, onNewVersion }: {
   verifierId: string
   credentialType: string
   versions: SchemaIndexEntry[]
   // Every product that renders with this schema. More than one is normal now that
   // the halves are separate files: a free check and a paid check can share one.
   products: ProductEntry[]
+  // Keyed verifier/type/version. A schema's live version is the one that matters,
+  // but an older version can drift too if credentials issued against it are still
+  // being opened.
+  drift?: Record<string, SchemaDriftRecord>
   isPlatform?: boolean
   onArchive?: (id: string) => void
   onDownload?: (verifierId: string, credentialType: string, version: string, name: string) => void
@@ -1849,6 +1868,58 @@ function SchemaGroup({ verifierId, credentialType, versions, products, isPlatfor
           ))}
         </div>
       )}
+
+      {/* ── Drift ──
+          The only signal that a schema has stopped describing what the vendor
+          sends. Nothing else in the system compares the two: a product's publish
+          checks the schema exists, and an arriving credential picks its schema by
+          the version it carries, but neither asks whether they agree. */}
+      {live && (() => {
+        const d = drift?.[`${verifierId}/${credentialType}/${live.version}`]
+          ?? drift?.[`${verifierId}/${credentialType}/latest`]
+        if (!d) return null
+        return (
+          <div className="mx-6 mb-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <AlertCircle size={13} className="text-amber-500 shrink-0" />
+              <span className="text-xs font-semibold text-amber-600">
+                Does not match what the vendor sends
+              </span>
+              <span className="text-[11px] text-muted-foreground">
+                seen {d.reports} {d.reports === 1 ? 'time' : 'times'} · last {format(new Date(d.last_seen), 'MMM d, HH:mm')}
+              </span>
+            </div>
+            {d.undeclared_fields.length > 0 && (
+              <div>
+                <p className="text-[11px] text-muted-foreground mb-1">
+                  Sent but not declared — these render with labels derived from the field name:
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {d.undeclared_fields.map(f => (
+                    <span key={f} className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600">{f}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {d.unused_fields.length > 0 && (
+              <div>
+                <p className="text-[11px] text-muted-foreground mb-1">
+                  Declared but never arrives, or always empty:
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {d.unused_fields.map(f => (
+                    <span key={f} className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{f}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            <p className="text-[11px] text-muted-foreground">
+              Publish a new version declaring these to control how they appear. Field names only —
+              no credential data is collected.
+            </p>
+          </div>
+        )
+      })()}
 
       {/* A schema nothing sells is not an error — it may be published ahead of
           its product — but it should be visible rather than looking published
