@@ -3,7 +3,7 @@
  * them, drift against what the vendor actually sends, and version history.
  */
 
-import type { ErrorInfo, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import type { ProductEntry, SchemaDriftRecord, SchemaIndexEntry } from '@/lib/ardisMsClient'
 import { AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Database, Eye, Package, Upload, XCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -18,7 +18,9 @@ export class PreviewErrorBoundary extends Component<
 > {
   state = { error: null }
   static getDerivedStateFromError(e: Error) { return { error: e.message } }
-  componentDidCatch(_e: Error, _info: ErrorInfo) {}
+  // Nothing to report: the boundary exists so a malformed schema shows a
+  // message instead of blanking the page.
+  componentDidCatch() {}
   render() {
     if (this.state.error) {
       return (

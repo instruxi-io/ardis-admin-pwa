@@ -133,7 +133,7 @@ export function validateBundle(obj: ViewModelBundle): ValidationResult {
     // ── Pricing (only checked if x-pricing is present) ──
     ...(() => {
       if (!hasOrder) return []
-      const xp = (obj['x-pricing'] ?? (obj as any).x_pricing) as XPricingConfig | undefined
+      const xp = (obj['x-pricing'] ?? obj['x_pricing']) as XPricingConfig | undefined
       if (!xp) return [] // no pricing = free product, valid
 
       const orderProps = Object.keys((orderSchema.properties as object) ?? {})
