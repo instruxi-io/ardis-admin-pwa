@@ -154,6 +154,31 @@ function parseBundle(raw: string): ViewModelBundle | null {
 
 type ViewModelBundle = Record<string, unknown>
 
+/// One file waiting to be published. Files are dropped together and published in
+/// dependency order, so each carries its own edit state and outcome.
+interface DroppedFile {
+  id: string
+  name: string
+  raw: string
+  edited: string | null
+}
+
+interface PublishStep {
+  id: string
+  name: string
+  status: 'pending' | 'running' | 'done' | 'failed' | 'skipped'
+  detail?: string
+}
+
+// Credential schemas must land before the products that name them: the server
+// refuses a product whose credential type has no published schema. Sorting here
+// rather than asking the operator to drop them in order is the entire point.
+const PUBLISH_ORDER: Record<BundleKind, number> = {
+  'credential-schema': 0,
+  bundle: 1,
+  product: 2,
+}
+
 // What a file publishes. The two-file layout says so explicitly via x-publishes,
 // so an order form and a credential schema can never be taken for one another.
 // Files without it are the older combined bundle and keep working.
@@ -413,33 +438,36 @@ function validateBundle(obj: ViewModelBundle): ValidationResult {
 
 // ── Single file drop zone ─────────────────────────────────────────────────────
 
-function DropZone({ file, onFile }: { file: string | null; onFile: (raw: string) => void }) {
+function DropZone({ count, onFiles }: {
+  count: number
+  onFiles: (dropped: { name: string; raw: string }[]) => void
+}) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
 
-  const read = useCallback((f: File) => {
-    const reader = new FileReader()
-    reader.onload = e => onFile(e.target?.result as string)
-    reader.readAsText(f)
-  }, [onFile])
+  // Reads every dropped file before handing them over as one batch. Calling back
+  // per file would append them in whatever order the reads happened to finish.
+  const read = useCallback((list: FileList) => {
+    const chosen = Array.from(list)
+    if (chosen.length === 0) return
+    Promise.all(chosen.map(f => new Promise<{ name: string; raw: string }>(resolve => {
+      const reader = new FileReader()
+      reader.onload = e => resolve({ name: f.name, raw: (e.target?.result as string) ?? '' })
+      reader.onerror = () => resolve({ name: f.name, raw: '' })
+      reader.readAsText(f)
+    }))).then(read => onFiles(read.filter(r => r.raw)))
+  }, [onFiles])
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     setDragging(false)
-    const f = e.dataTransfer.files[0]
-    if (f) read(f)
+    if (e.dataTransfer.files) read(e.dataTransfer.files)
   }, [read])
-
-  const parsed  = file ? parseBundle(file) : null
-  const isValid = parsed !== null
 
   return (
     <div
-      className={`border-2 border-dashed rounded-xl p-10 transition-all cursor-pointer text-center
-        ${dragging     ? 'border-primary bg-primary/5'
-        : isValid      ? 'border-emerald-500/50 bg-emerald-500/5'
-        : file && !isValid ? 'border-destructive/50 bg-destructive/5'
-        :                'border-border hover:border-primary/40 hover:bg-muted/30'}`}
+      className={`border-2 border-dashed rounded-xl p-8 transition-all cursor-pointer text-center
+        ${dragging ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40 hover:bg-muted/30'}`}
       onDragOver={e => { e.preventDefault(); setDragging(true) }}
       onDragLeave={() => setDragging(false)}
       onDrop={onDrop}
@@ -449,44 +477,25 @@ function DropZone({ file, onFile }: { file: string | null; onFile: (raw: string)
         ref={inputRef}
         type="file"
         accept=".json"
+        multiple
         className="hidden"
-        onChange={e => { const f = e.target.files?.[0]; if (f) read(f) }}
+        onChange={e => { if (e.target.files) read(e.target.files); e.target.value = '' }}
       />
-      <div className="flex flex-col items-center gap-3">
-        <div className={`p-3 rounded-full ${isValid ? 'bg-emerald-500/10 text-emerald-500' : file && !isValid ? 'bg-destructive/10 text-destructive' : 'bg-muted text-muted-foreground'}`}>
-          {isValid ? <CheckCircle2 size={24} /> : file && !isValid ? <XCircle size={24} /> : <FileJson size={24} />}
+      <div className="flex flex-col items-center gap-2">
+        <div className="p-3 rounded-full bg-muted text-muted-foreground">
+          <FileJson size={22} />
         </div>
-        <div>
-          <p className="text-sm font-medium">
-            {isValid ? (parsed as any).name ?? 'Bundle loaded'
-              : file && !isValid ? 'Invalid JSON'
-              : 'Drop view model JSON here'}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            {isValid
-              ? `${(parsed as any).verifier_id} · ${(parsed as any).credential_type} · ${(parsed as any).version ?? 'v1'}`
-              : 'Single .json file containing manifest, order schema, and display schema'}
-          </p>
-        </div>
-        {!file && (
-          <p className="text-xs text-muted-foreground/60">or click to browse</p>
-        )}
-        {isValid && (
-          <button
-            type="button"
-            onClick={e => { e.stopPropagation(); onFile('') }}
-            className="text-xs text-muted-foreground hover:text-destructive transition-colors"
-          >
-            Remove
-          </button>
-        )}
+        <p className="text-sm font-medium">
+          {count === 0 ? 'Drop this product’s files here' : 'Drop another file'}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Credential schema and product together, in any order &mdash; each says which it is
+        </p>
+        <p className="text-xs text-muted-foreground/60">or click to browse</p>
       </div>
     </div>
   )
 }
-
-// ── Validation panel ──────────────────────────────────────────────────────────
-
 function ValidationPanel({ result }: { result: ValidationResult }) {
   const [open, setOpen] = useState(false)
   const passed = result.checks.filter(c => c.pass).length
@@ -567,9 +576,14 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
   const queryClient = useQueryClient()
 
   const [showImport, setShowImport] = useState(false)
-  const [fileRaw, setFileRaw] = useState<string | null>(null)
-  const [editedRaw, setEditedRaw] = useState<string | null>(null)
-  const [pendingBundle, setPendingBundle] = useState<ViewModelBundle | null>(null)
+  // A product is two files, so the panel holds a set of them rather than one.
+  // `edited` is the operator's in-place JSON edit, kept per file so switching
+  // between them does not discard changes.
+  const [files, setFiles] = useState<DroppedFile[]>([])
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [publishLog, setPublishLog] = useState<PublishStep[]>([])
+  // The whole queue awaiting confirmation in production, not a single bundle.
+  const [pendingBundle, setPendingBundle] = useState<{ file: DroppedFile; bundle: ViewModelBundle }[] | null>(null)
   const [publishConfirmed, setPublishConfirmed] = useState(false)
   // Set after publishing a credential schema, to prompt for the product half.
   const [awaitingProduct, setAwaitingProduct] = useState<
@@ -581,9 +595,51 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
 
   const IS_PROD = env.APP_ENV === 'production'
 
-  // Parse from editedRaw (user edits) if present, otherwise from uploaded fileRaw
-  const activeRaw = editedRaw ?? fileRaw
+  // The selected file drives the review panes below. Everything downstream reads
+  // activeRaw, so the review is unchanged whether one file was dropped or four.
+  const selected = files.find(f => f.id === selectedId) ?? files[0] ?? null
+  const activeRaw = selected ? (selected.edited ?? selected.raw) : null
   const bundle: ViewModelBundle | null = activeRaw ? parseBundle(activeRaw) : null
+
+  // Each dropped file with its parse and validation result, in the order they
+  // will be published.
+  const queue = files
+    .map(f => {
+      const parsed = parseBundle(f.edited ?? f.raw)
+      return { file: f, bundle: parsed, validation: parsed ? validateBundle(parsed) : null }
+    })
+    .sort((a, b) =>
+      (PUBLISH_ORDER[a.bundle ? kindOf(a.bundle) : 'product'] ?? 9) -
+      (PUBLISH_ORDER[b.bundle ? kindOf(b.bundle) : 'product'] ?? 9))
+
+  const queueReady = queue.length > 0 && queue.every(q => q.validation?.pass)
+
+  const setSelectedRaw = (text: string) => {
+    if (!selected) return
+    setFiles(prev => prev.map(f => (f.id === selected.id ? { ...f, edited: text } : f)))
+    setPublishConfirmed(false)
+  }
+
+  const addFiles = (dropped: { name: string; raw: string }[]) => {
+    if (dropped.length === 0) return
+    const entries: DroppedFile[] = dropped.map((d, i) => ({
+      // Names can repeat across drops; the index keeps ids unique without a uuid.
+      id: `${d.name}-${files.length + i}-${d.raw.length}`,
+      name: d.name,
+      raw: d.raw,
+      edited: null,
+    }))
+    setFiles(prev => [...prev, ...entries])
+    setSelectedId(prev => prev ?? entries[0].id)
+    setPublishConfirmed(false)
+    setPublishLog([])
+  }
+
+  const removeFile = (id: string) => {
+    setFiles(prev => prev.filter(f => f.id !== id))
+    if (selectedId === id) setSelectedId(null)
+    setPublishConfirmed(false)
+  }
 
   const validation = bundle ? validateBundle(bundle) : null
 
@@ -648,8 +704,11 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
   const orphanProducts = products.filter(p =>
     p.verifier_id && !publishedTypes.has(`${p.verifier_id}/${p.credential_type ?? ''}`))
 
-  const publishMutation = useMutation({
-    mutationFn: async (b: ViewModelBundle) => {
+  // Publishes one file. Extracted from the mutation so a single drop and a whole
+  // queue run through identical code — a two-file product must not take a
+  // different path from a one-file one.
+  const publishBundle = async (b: ViewModelBundle) => {
+    {
       const kind = kindOf(b)
       // Authored value, not the username — see effectiveBundle above.
       const verifierId     = b.verifier_id as string
@@ -753,28 +812,65 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
       }
       await publishCredentialSchema()
       await publishProduct(true)
+    }
+  }
+
+  const publishMutation = useMutation({
+    // Publishes every dropped file in dependency order. Stops at the first
+    // failure: a product almost always depends on a schema earlier in the queue,
+    // so carrying on would pile a second, misleading error on top of the real one.
+    mutationFn: async (items: { file: DroppedFile; bundle: ViewModelBundle }[]) => {
+      setPublishLog(items.map(i => ({ id: i.file.id, name: i.file.name, status: 'pending' })))
+      for (let i = 0; i < items.length; i++) {
+        const { file, bundle: b } = items[i]
+        setPublishLog(prev => prev.map(s => s.id === file.id ? { ...s, status: 'running' } : s))
+        try {
+          await publishBundle(b)
+          setPublishLog(prev => prev.map(s => s.id === file.id
+            ? { ...s, status: 'done', detail: KIND_LABEL[kindOf(b)] } : s))
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Publish failed'
+          setPublishLog(prev => prev.map(s =>
+            s.id === file.id      ? { ...s, status: 'failed',  detail: msg } :
+            s.status === 'pending' ? { ...s, status: 'skipped', detail: 'not attempted' } : s))
+          throw new Error(`${file.name}: ${msg}`)
+        }
+      }
+      return items
     },
     onMutate: () => setSchemaOutcome(null),
-    onSuccess: () => {
+    onSuccess: (items) => {
       queryClient.invalidateQueries({ queryKey: ['schemas'] })
       queryClient.invalidateQueries({ queryKey: ['products'] })
-      // Say which halves actually changed. "Published" alone is ambiguous when
-      // the credential schema was left alone because its version already exists.
-      const kind = effectiveBundle ? kindOf(effectiveBundle) : 'bundle'
-      toast.success(
-        kind === 'credential-schema' ? (schemaOutcome ?? 'Credential schema published')
-        : kind === 'product'         ? 'Product published to Stripe'
-        : schemaOutcome              ? `Product published. ${schemaOutcome}`
-        :                              'Product and credential schema published')
 
-      // A published schema is half a pair. Hold the panel open and say what is
-      // still missing, instead of clearing the screen and leaving the operator to
-      // remember that a schema alone sells nothing.
-      if (kind === 'credential-schema' && effectiveBundle) {
+      const kinds = items.map(i => kindOf(i.bundle))
+      const schemaCount  = kinds.filter(k => k === 'credential-schema').length
+      const productCount = kinds.filter(k => k !== 'credential-schema').length
+
+      if (items.length > 1) {
+        toast.success(`Published ${[
+          schemaCount  ? `${schemaCount} credential schema${schemaCount === 1 ? '' : 's'}` : '',
+          productCount ? `${productCount} product${productCount === 1 ? '' : 's'}` : '',
+        ].filter(Boolean).join(' and ')}`)
+      } else {
+        // Single file: say which half changed. "Published" alone is ambiguous when
+        // the schema was left alone because its version already exists.
+        toast.success(
+          kinds[0] === 'credential-schema' ? (schemaOutcome ?? 'Credential schema published')
+          : kinds[0] === 'product'         ? 'Product published to Stripe'
+          : schemaOutcome                  ? `Product published. ${schemaOutcome}`
+          :                                  'Product and credential schema published')
+      }
+
+      // A schema published with no product alongside it is half a pair. Hold the
+      // panel open and name what is missing, rather than clearing the screen and
+      // leaving the operator to remember that a schema alone sells nothing.
+      if (productCount === 0 && schemaCount > 0) {
+        const last = items[items.length - 1].bundle
         setAwaitingProduct({
-          verifierId:     effectiveBundle.verifier_id as string,
-          credentialType: effectiveBundle.credential_type as string,
-          version:        (effectiveBundle.version as string) || 'v1',
+          verifierId:     last.verifier_id as string,
+          credentialType: last.credential_type as string,
+          version:        (last.version as string) || 'v1',
         })
         resetImport(true)
         return
@@ -790,22 +886,30 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
   // be uploaded, and the two files are almost always uploaded back to back.
   const resetImport = (keepOpen = false) => {
     setShowImport(keepOpen)
-    setFileRaw(null)
-    setEditedRaw(null)
+    setFiles([])
+    setSelectedId(null)
     setPendingBundle(null)
     setPublishConfirmed(false)
   }
 
+  // Everything valid in the queue, in the order it will be published.
+  const publishable = queue
+    .filter(q => q.bundle && q.validation?.pass)
+    .map(q => ({ file: q.file, bundle: q.bundle as ViewModelBundle }))
+
   const handlePublish = () => {
-    if (!effectiveBundle) return
+    if (publishable.length === 0) return
     if (!publishConfirmed) return
-    // Developers may never publish platform-role products.
-    if (isDeveloper && (effectiveBundle as any)['x-product-role'] === 'platform') {
-      toast.error('Platform subscription products may only be published by a tenant admin.')
+    // Developers may never publish platform-role products. Checked across the
+    // whole queue, not just the file on screen — the offending one may not be
+    // the one being reviewed.
+    const platform = publishable.find(p => (p.bundle as any)['x-product-role'] === 'platform')
+    if (isDeveloper && platform) {
+      toast.error(`${platform.file.name}: platform subscription products may only be published by a tenant admin.`)
       return
     }
-    if (IS_PROD) setPendingBundle(effectiveBundle)
-    else { publishMutation.mutate(effectiveBundle); setPublishConfirmed(false) }
+    if (IS_PROD) setPendingBundle(publishable)
+    else { publishMutation.mutate(publishable); setPublishConfirmed(false) }
   }
 
   // ── Download helpers ─────────────────────────────────────────────────────
@@ -928,7 +1032,9 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
       const bundle = [obj1, content.ui_schema ?? {}, {}]
       const text = bundle.map(o => JSON.stringify(o, null, 2)).join('\n')
 
-      setFileRaw(text)
+      setFiles([{ id: `new-version-${name}`, name: `${name} (new version)`, raw: text, edited: null }])
+      setSelectedId(null)
+      setPublishLog([])
       setShowImport(true)
       toast.success(`Loaded ${name} — review and publish to create a new version`)
     } catch {
@@ -1024,11 +1130,17 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
   return (
     <>
       <PublishConfirmModal
-        open={!!pendingBundle}
+        open={!!pendingBundle && pendingBundle.length > 0}
         action="Publish"
-        confirmText={pendingBundle ? `${pendingBundle.verifier_id}/${pendingBundle.credential_type}` : ''}
-        description={pendingBundle ? `Publishing view model "${pendingBundle.name}" to Storj and Stripe.` : ''}
-        onConfirm={() => { if (pendingBundle) { publishMutation.mutate(pendingBundle); setPendingBundle(null) } }}
+        confirmText={pendingBundle?.[0]
+          ? `${pendingBundle[0].bundle.verifier_id}/${pendingBundle[0].bundle.credential_type}`
+          : ''}
+        description={pendingBundle
+          ? pendingBundle.length === 1
+            ? `Publishing ${KIND_LABEL[kindOf(pendingBundle[0].bundle)].toLowerCase()} "${pendingBundle[0].bundle.name}".`
+            : `Publishing ${pendingBundle.length} files: ${pendingBundle.map(p => p.file.name).join(', ')}.`
+          : ''}
+        onConfirm={() => { if (pendingBundle) { publishMutation.mutate(pendingBundle); setPendingBundle(null); setPublishConfirmed(false) } }}
         onCancel={() => setPendingBundle(null)}
       />
 
@@ -1088,7 +1200,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
               {/* Carried over from the schema that was just published: a schema on
                   its own is not orderable, and this is the moment that fact is
                   actionable. */}
-              {awaitingProduct && !fileRaw && (
+              {awaitingProduct && files.length === 0 && (
                 <div className="flex items-start justify-between gap-4 p-3 rounded-lg border border-emerald-500/25 bg-emerald-500/5">
                   <div className="flex items-start gap-2 min-w-0">
                     <CheckCircle2 size={14} className="text-emerald-500 mt-0.5 shrink-0" />
@@ -1116,21 +1228,102 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
               {/* Step 1 — Upload */}
               <div className="space-y-2">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">1 — Upload</p>
-                <DropZone
-                  file={fileRaw}
-                  onFile={raw => { setFileRaw(raw || null); setEditedRaw(null); setPublishConfirmed(false) }}
-                />
+                <DropZone count={files.length} onFiles={addFiles} />
+
+                {/* The batch, in the order it will be published. Schemas sort
+                    ahead of products because the server refuses a product whose
+                    credential type has no schema — so the operator never has to
+                    sequence the uploads themselves. */}
+                {files.length > 0 && (
+                  <div className="rounded-lg border border-border divide-y divide-border mt-2">
+                    {queue.map((q, i) => {
+                      const step = publishLog.find(s => s.id === q.file.id)
+                      const isSel = selected?.id === q.file.id
+                      const kind = q.bundle ? kindOf(q.bundle) : null
+                      return (
+                        <div
+                          key={q.file.id}
+                          onClick={() => setSelectedId(q.file.id)}
+                          className={`flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors
+                            ${isSel ? 'bg-primary/5' : 'hover:bg-muted/30'}`}
+                        >
+                          <span className="font-mono text-[11px] text-muted-foreground w-4 shrink-0">{i + 1}</span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm truncate">
+                              {q.bundle ? (q.bundle.name as string) || q.file.name : q.file.name}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground font-mono truncate">
+                              {kind
+                                ? `${q.bundle!.verifier_id}/${q.bundle!.credential_type}${
+                                    kind === 'credential-schema' ? `/${(q.bundle!.version as string) || 'v1'}` : ''}`
+                                : 'could not be parsed'}
+                            </p>
+                          </div>
+                          {kind && (
+                            <Badge variant="secondary" className="text-[10px] font-mono shrink-0">
+                              {kind === 'credential-schema' ? 'schema' : kind === 'product' ? 'product' : 'bundle'}
+                            </Badge>
+                          )}
+                          {step
+                            ? <Badge variant="outline" className={`text-[10px] shrink-0 ${
+                                step.status === 'done'    ? 'border-emerald-500/40 text-emerald-600' :
+                                step.status === 'failed'  ? 'border-destructive/40 text-destructive' :
+                                step.status === 'running' ? 'border-primary/40 text-primary' :
+                                                            'border-border text-muted-foreground'}`}>
+                                {step.status}
+                              </Badge>
+                            : <Badge variant="outline" className={`text-[10px] shrink-0 ${
+                                q.validation?.pass ? 'border-emerald-500/40 text-emerald-600'
+                                                   : 'border-destructive/40 text-destructive'}`}>
+                                {q.validation?.pass ? 'valid' : 'invalid'}
+                              </Badge>}
+                          <button
+                            type="button"
+                            onClick={e => { e.stopPropagation(); removeFile(q.file.id) }}
+                            className="text-xs text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                            title="Remove from this batch"
+                          >
+                            &times;
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {files.length > 1 && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Publishing in this order. {selected ? <>Reviewing <span className="font-mono">{selected.name}</span> below — click another to switch.</> : null}
+                  </p>
+                )}
+
+                {/* Failures name the file, and anything after the failure is left
+                    unattempted rather than piling a dependent error on top. */}
+                {publishLog.some(s => s.status === 'failed' || s.status === 'skipped') && (
+                  <div className="rounded-lg border border-destructive/25 bg-destructive/5 p-3 space-y-1">
+                    {publishLog.filter(s => s.detail && s.status !== 'done').map(s => (
+                      <p key={s.id} className="text-xs text-destructive">
+                        <span className="font-mono">{s.name}</span> — {s.detail}
+                      </p>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Raw JSON editor — always shown after upload */}
-              {fileRaw && (
+              {selected && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Bundle JSON</p>
-                    {editedRaw && editedRaw !== fileRaw && (
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      JSON &middot; <span className="font-mono normal-case">{selected.name}</span>
+                    </p>
+                    {selected.edited && selected.edited !== selected.raw && (
                       <button
                         type="button"
-                        onClick={() => { setEditedRaw(null); setPublishConfirmed(false) }}
+                        onClick={() => {
+                          setFiles(prev => prev.map(f => f.id === selected.id ? { ...f, edited: null } : f))
+                          setPublishConfirmed(false)
+                        }}
                         className="text-xs text-muted-foreground hover:text-destructive transition-colors"
                       >
                         Reset to original
@@ -1139,8 +1332,8 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                   </div>
                   <textarea
                     className="w-full h-64 font-mono text-xs bg-muted/20 border border-border rounded-lg p-3 text-foreground resize-y focus:outline-none focus:ring-1 focus:ring-ring"
-                    value={editedRaw ?? fileRaw}
-                    onChange={e => { setEditedRaw(e.target.value); setPublishConfirmed(false) }}
+                    value={selected.edited ?? selected.raw}
+                    onChange={e => setSelectedRaw(e.target.value)}
                     spellCheck={false}
                   />
                   <p className="text-[11px] text-muted-foreground">Edit directly above — validation and preview update automatically.</p>
@@ -1252,8 +1445,9 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                 <PricingMapper bundle={effectiveBundle} />
               )}
 
-              {/* Step 5 — Publish gate */}
-              {validation?.pass && effectiveBundle && (
+              {/* Step 5 — Publish gate. Gated on the whole batch: a valid file on
+                  screen with an invalid sibling must not look ready to publish. */}
+              {queue.length > 0 && queueReady && effectiveBundle && (
                 <div className="space-y-4 pt-2 border-t border-border">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">5 — Publish</p>
 
@@ -1264,11 +1458,13 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                       <div className="space-y-1">
                         <p className="text-xs font-semibold text-amber-600">Review before publishing</p>
                         <p className="text-xs text-muted-foreground">
-                          {kindOf(effectiveBundle) === 'credential-schema'
-                            ? 'This publishes a credential schema to Storj. A published version is immutable — correcting it means publishing a new version, and credentials already issued keep rendering with this one.'
+                          {publishable.length > 1
+                            ? `Publishing ${publishable.length} files in order: credential schemas first, then the products that render with them. Schema versions are immutable once published, and a changed price archives the old one.`
+                            : kindOf(effectiveBundle) === 'credential-schema'
+                            ? 'This publishes a credential schema. A published version is immutable — correcting it means publishing a new version, and credentials already issued keep rendering with this one.'
                             : kindOf(effectiveBundle) === 'product'
-                            ? 'This creates or updates the product in Stripe. Prices are immutable, so a changed amount archives the old price and creates a new one; anything holding the old price id stops working.'
-                            : 'Publishing will create or update the following in Stripe and Storj. This cannot be undone — a new version must be published to make changes.'}
+                            ? 'This creates or updates the product in Stripe. Prices are immutable, so a changed amount archives the old price and creates a new one.'
+                            : 'This creates or updates the product and its credential schema. A published schema version cannot be edited afterwards.'}
                         </p>
                       </div>
                     </div>
@@ -1317,6 +1513,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                       size="sm"
                     >
                       {publishMutation.isPending ? 'Publishing…'
+                        : publishable.length > 1 ? `Publish ${publishable.length} files`
                         : kindOf(effectiveBundle) === 'credential-schema' ? 'Publish credential schema'
                         : kindOf(effectiveBundle) === 'product' ? 'Publish product to Stripe'
                         : 'Publish to Storj & Stripe'}
