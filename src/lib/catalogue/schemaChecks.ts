@@ -97,7 +97,13 @@ export function checkSchema(
   let schemaValid = true
   let schemaError: string | undefined
   try {
-    compiled = validator.ajv.compile(schema) as unknown as (data: unknown) => boolean
+    // Compiled without $id. AJV caches by $id in the instance, and this is the
+    // same instance the preview validates with, so compiling a schema that
+    // declares one registers it — and the next compile fails with "schema with
+    // key or id already exists", which is what a vendor saw in place of a result.
+    // Nothing here resolves references, so the id is not needed.
+    const { $id: _ignored, ...standalone } = schema
+    compiled = validator.ajv.compile(standalone) as unknown as (data: unknown) => boolean
   } catch (err) {
     schemaValid = false
     // AJV's message names the offending path, which is the useful part.

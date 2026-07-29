@@ -216,3 +216,19 @@ describe('validateBundle: security', () => {
     expect(failed(product({ description: 'data:text/html;base64,AAAA' })).join(' ')).toMatch(/script/i)
   })
 })
+
+describe('validateBundle: ui:order wildcard', () => {
+  // RJSF requires ui:order to name every property or to end with "*". Rejecting
+  // the wildcard forced authors to list every field, and a ui:order that had gone
+  // stale against its properties became a hard render error in the preview
+  // rather than a failed check.
+  it('accepts "*" as the catch-all', () => {
+    const b = product({ order_ui_schema: { 'ui:order': ['first_name', '*'] } })
+    expect(failed(b).join(' ')).not.toMatch(/ui:order/)
+  })
+
+  it('still rejects a named field that does not exist', () => {
+    const b = product({ order_ui_schema: { 'ui:order': ['first_name', 'ghost', '*'] } })
+    expect(failed(b).join(' ')).toMatch(/ui:order/)
+  })
+})
