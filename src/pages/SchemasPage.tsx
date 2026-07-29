@@ -7,6 +7,7 @@ import {
 import { OrderFormPreview, CredentialPreview } from '@/components/ui/schema-preview'
 import { schemasApi, productsApi, type SchemaIndexEntry, type ProductEntry, type SchemaDriftRecord } from '@/lib/ardisMsClient'
 import { suggestGroups } from '@/lib/suggestGroups'
+import { exampleFiles } from '@/lib/catalogue/exampleFiles'
 import { useAuth } from '@/context/AuthContext'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -434,58 +435,16 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
   const ownVerifierId =
     schemas[0]?.verifier_id ?? products.find(p => p.verifier_id)?.verifier_id ?? ''
 
-  const downloadStarterBundle = () => {
-    const starter = [
-      {
-        "$id": "your-verifier-id/credential-type/v1",
-        "title": "Product Name",
-        "description": "What this verification does.",
-        "x-verifier-id": ownVerifierId || "your-verifier-id",
-        "x-verifier-name": "Your Company Name",
-        "x-credential-type": "credential-type",
-        "x-order-type": "license",
-        "x-version": "v1",
-        "type": "object",
-        "required": ["field_one"],
-        "properties": {
-          "field_one": { "type": "string", "title": "Field One" },
-          "field_two": { "type": "string", "title": "Field Two" }
-        },
-        "x-data-schema": {
-          "type": "object",
-          "properties": {
-            "records": {
-              "type": "array",
-              "title": "Verification Records",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "verified_field": { "type": "string", "title": "Verified Field" },
-                  "status":         { "type": "string", "title": "Status" }
-                }
-              }
-            }
-          }
-        },
-        "x-data-ui-schema": {
-          "ui:order": ["records"],
-          "ui:groups": [{ "title": "Results", "fields": ["records"] }]
-        }
-      },
-      {
-        "ui:order": ["field_one", "field_two"],
-        "ui:groups": [{ "title": "Details", "fields": ["field_one", "field_two"] }]
-      },
-      {
-        "records": [{ "verified_field": "Example value", "status": "current" }]
-      }
-    ]
-    const text = starter.map(o => JSON.stringify(o, null, 2)).join('\n')
-    const blob = new Blob([text], { type: 'application/json' })
-    const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href = url; a.download = 'starter_bundle.json'; a.click()
-    URL.revokeObjectURL(url)
+  // Loads the worked example into the panel rather than downloading it: a new
+  // vendor got a file on disk and an empty screen, when what they needed was to
+  // see a valid example rendered. Definition lives in lib so a test can assert on
+  // the exact thing they are handed.
+  const loadExamplePair = () => {
+    setFiles(exampleFiles(ownVerifierId).map(f => ({ ...f, edited: null })))
+    setSelectedId('example-credential')
+    setPublishLog([])
+    setPublishConfirmed(false)
+    setShowImport(true)
   }
 
   const downloadPublishedBundle = async (verifierId: string, credentialType: string, version: string, name: string) => {
@@ -672,8 +631,8 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={downloadStarterBundle}>
-              <FileJson size={14} className="mr-1.5" />New Bundle
+            <Button variant="outline" size="sm" onClick={loadExamplePair}>
+              <FileJson size={14} className="mr-1.5" />Load example
             </Button>
             <Button onClick={() => showImport ? resetImport() : setShowImport(true)} size="sm">
               {showImport ? 'Cancel' : <><Upload size={14} className="mr-1.5" />Import</>}
@@ -1093,10 +1052,49 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
           </CardHeader>
           <CardContent className="p-0">
             {isLoading && <p className="text-sm text-muted-foreground text-center py-8">Loading…</p>}
+            {/* First run is when a vendor knows least, and it used to be the least
+                guided moment on the site: one sentence naming what they did not
+                have, and two unlabelled buttons in a far corner — one of which
+                downloaded a template, the other of which opened the panel that
+                would have explained it. */}
             {!isLoading && schemas.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                Nothing published yet. Upload a credential schema first, then the product that renders with it.
-              </p>
+              <div className="px-6 py-10 max-w-2xl mx-auto space-y-5">
+                <div className="space-y-2">
+                  <h3 className="text-sm font-semibold">Nothing published yet</h3>
+                  <p className="text-sm text-muted-foreground">
+                    A product takes two files, and they do different jobs.
+                  </p>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div className="rounded-lg border border-border p-3 space-y-1">
+                    <p className="text-xs font-semibold">Credential schema</p>
+                    <p className="text-xs text-muted-foreground">
+                      What your verification returns. It decides how the credential
+                      reads on the buyer's card and what they can share from it, which is
+                      why we need it described rather than just delivered. Immutable once
+                      published, so credentials already issued keep rendering.
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3 space-y-1">
+                    <p className="text-xs font-semibold">Product</p>
+                    <p className="text-xs text-muted-foreground">
+                      What a buyer is purchasing: the order form they fill in and the
+                      price. Edited in place whenever you like.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button size="sm" onClick={loadExamplePair}>
+                    Load a working example
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    Loads both files, already valid, so you can see them rendered and edit
+                    from there.
+                  </span>
+                </div>
+              </div>
             )}
             {(() => {
               const entries = Object.entries(grouped)
