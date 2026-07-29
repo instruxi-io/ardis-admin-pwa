@@ -84,7 +84,10 @@ export function validateBundle(obj: ViewModelBundle): ValidationResult {
         pass: (() => {
           const order = (orderUi['ui:order'] as string[]) ?? []
           const props = Object.keys((orderSchema.properties as object) ?? {})
-          return order.every(f => props.includes(f))
+          // "*" is RJSF's wildcard for "everything not named above", and is the
+          // only legal way to write a partial ui:order. Rejecting it forced
+          // authors into listing every field or dropping ui:order entirely.
+          return order.every(f => f === '*' || props.includes(f))
         })(),
         message: 'order_ui_schema ui:order references fields not defined in order_schema.properties',
       },

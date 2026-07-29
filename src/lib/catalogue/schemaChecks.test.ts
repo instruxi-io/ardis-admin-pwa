@@ -180,3 +180,32 @@ describe('checkSchema: constructs the app cannot render', () => {
     expect(r.unsupported).toEqual([])
   })
 })
+
+describe('checkSchema: a schema that declares $id', () => {
+  // AJV caches compiled schemas by $id, and this is the same instance the preview
+  // validates with. Compiling a schema with an $id registered it, so the second
+  // compile — a re-render, or the other half of a pair — failed with "schema with
+  // key or id already exists". A vendor saw that in place of a validation result.
+  it('can be compiled repeatedly without colliding', () => {
+    const schema = {
+      $id: 'vendor1/background/v2',
+      type: 'object',
+      properties: { reference_id: { type: 'string' } },
+    }
+    for (let i = 0; i < 3; i++) {
+      const r = checkSchema(schema, { reference_id: 'x' }, display)
+      expect(r.schemaValid, `compile ${i + 1}`).toBe(true)
+      expect(r.schemaError).toBeUndefined()
+      expect(r.sampleValid).toBe(true)
+    }
+  })
+
+  it('does not collide with a different schema reusing the same $id', () => {
+    const a = { $id: 'same/id/v1', type: 'object', properties: { a: { type: 'string' } } }
+    const b = { $id: 'same/id/v1', type: 'object', properties: { b: { type: 'number' } } }
+    expect(checkSchema(a, { a: 'x' }, display).sampleValid).toBe(true)
+    expect(checkSchema(b, { b: 1 }, display).sampleValid).toBe(true)
+    // And the second must be validated against its own shape, not the first's.
+    expect(checkSchema(b, { b: 'not a number' }, display).sampleValid).toBe(false)
+  })
+})
