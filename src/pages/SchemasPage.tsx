@@ -561,7 +561,9 @@ class PreviewErrorBoundary extends Component<
 
 export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'platform' }) {
   const isPlatformMode = mode === 'platform'
-  const { isDeveloper, username } = useAuth()
+  // No username here on purpose: it is not a verifier_id and treating it as one
+  // is what broke the visibility filter and the starter file.
+  const { isDeveloper } = useAuth()
   const queryClient = useQueryClient()
 
   const [showImport, setShowImport] = useState(false)
@@ -808,13 +810,20 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
 
   // ── Download helpers ─────────────────────────────────────────────────────
 
+  // A verifier_id the caller is known to own. Everything the server returned is
+  // already scoped to their group memberships, so any id in it is authoritative —
+  // unlike the account username, which routinely differs from the verifier_id and
+  // put a value in the starter file that the server would reject with a 403.
+  const ownVerifierId =
+    schemas[0]?.verifier_id ?? products.find(p => p.verifier_id)?.verifier_id ?? ''
+
   const downloadStarterBundle = () => {
     const starter = [
       {
         "$id": "your-verifier-id/credential-type/v1",
         "title": "Product Name",
         "description": "What this verification does.",
-        "x-verifier-id": isDeveloper && username ? username : "your-verifier-id",
+        "x-verifier-id": ownVerifierId || "your-verifier-id",
         "x-verifier-name": "Your Company Name",
         "x-credential-type": "credential-type",
         "x-order-type": "license",
@@ -938,11 +947,19 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
       : ''
   }
 
+  // No verifier_id filter here. ListSchemas already scopes the response to the
+  // verifier ids of the groups the caller belongs to, so the server is the
+  // boundary and anything that arrives is theirs to see.
+  //
+  // This used to also require s.verifier_id === username, which is the same
+  // mistake the publish path was fixed for: a verifier_id lives in group
+  // metadata and routinely differs from the account name (ardis-vp vs ardis).
+  // A vendor whose names differ published successfully and then saw an empty
+  // list — indistinguishable from having lost the work. It only looked correct
+  // because the developer test account happens to have username == verifier_id.
   const visibleSchemas = isPlatformMode
     ? schemas.filter(s => schemaProductRole(s) === 'platform')
-    : isDeveloper
-      ? schemas.filter(s => s.verifier_id === username && schemaProductRole(s) !== 'platform')
-      : schemas.filter(s => schemaProductRole(s) !== 'platform')
+    : schemas.filter(s => schemaProductRole(s) !== 'platform')
 
   const grouped = visibleSchemas.reduce<Record<string, typeof schemas>>((acc, s) => {
     const key = `${s.verifier_id}/${s.credential_type}`
