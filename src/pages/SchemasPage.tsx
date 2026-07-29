@@ -951,6 +951,22 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
     return acc
   }, {})
 
+  // The index appends on every publish rather than upserting, so one version can
+  // appear many times: ardis/license/v1 is in there seven times. Left as-is a
+  // group reports "+6 prior" for a single immutable version, which reads as six
+  // superseded schemas that do not exist. Collapse to one entry per version,
+  // keeping the most recent publish, since that is the one in storage.
+  for (const key of Object.keys(grouped)) {
+    const newestByVersion = new Map<string, SchemaIndexEntry>()
+    for (const s of grouped[key]) {
+      const prev = newestByVersion.get(s.version)
+      if (!prev || (s.published_at ?? '') > (prev.published_at ?? '')) {
+        newestByVersion.set(s.version, s)
+      }
+    }
+    grouped[key] = [...newestByVersion.values()]
+  }
+
   // Whether the file on screen has its other half already published, answered
   // before the publish rather than by a server error after it. The schema list is
   // loaded anyway, so this costs nothing and is the difference between "publish
