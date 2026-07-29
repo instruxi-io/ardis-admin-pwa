@@ -20,6 +20,13 @@ import type {
 
 // ── Field template — wraps label + input + error ──────────────────────────────
 
+/// RJSF labels each array item "{Title}-{index}". FieldTemplate suppressed those
+/// and ObjectFieldTemplate did not, so an array of objects rendered its title
+/// once per item on top of the field label.
+function isAutoArrayItemLabel(label: string | undefined): boolean {
+  return !!label && /^.+[-\s]\d+$/.test(label)
+}
+
 export function FieldTemplate({
   id,
   label,
@@ -30,11 +37,7 @@ export function FieldTemplate({
   displayLabel,
 }: FieldTemplateProps) {
   if (hidden) return <>{children}</>
-  // Suppress RJSF's auto-generated array item labels (e.g. "Verification Records-1").
-  // These match the pattern "{Title}-{number}" and always have an ID ending in _\d+
-  // at the array item level.
-  const isAutoArrayItemLabel = displayLabel && /^.+[-\s]\d+$/.test(label ?? '')
-  if (isAutoArrayItemLabel) return <>{children}</>
+  if (displayLabel && isAutoArrayItemLabel(label)) return <>{children}</>
   return (
     <div className="space-y-1.5">
       {displayLabel && label && (
@@ -82,7 +85,7 @@ export function ObjectFieldTemplate({
 
     return (
       <div className="space-y-4">
-        {title && (
+        {title && !isAutoArrayItemLabel(title) && (
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
             {title}
           </p>
@@ -122,7 +125,7 @@ export function ObjectFieldTemplate({
 
   return (
     <div className="space-y-3">
-      {title && (
+      {title && !isAutoArrayItemLabel(title) && (
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
           {title}
         </p>
@@ -138,20 +141,14 @@ export function ObjectFieldTemplate({
 
 // ── Array field template ───────────────────────────────────────────────────────
 
-export function ArrayFieldTemplate({ title, items }: ArrayFieldTemplateProps) {
-  // In RJSF v5, items is rendered directly as JSX — it's already an array
-  // of React elements, not objects with a children property.
-  return (
-    <div className="space-y-2">
-      {title && (
-        <div className="flex items-center gap-2">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-primary/70">{title}</p>
-          <div className="flex-1 h-px bg-border" />
-        </div>
-      )}
-      <div>{items as unknown as React.ReactNode}</div>
-    </div>
-  )
+export function ArrayFieldTemplate({ items }: ArrayFieldTemplateProps) {
+  // Deliberately no title. FieldTemplate already renders the label for this same
+  // field, so rendering it here showed every array's name twice — and a third
+  // time per item, via ObjectFieldTemplate.
+  //
+  // In RJSF v5, items is rendered directly as JSX — it's already an array of
+  // React elements, not objects with a children property.
+  return <div className="space-y-2">{items as unknown as React.ReactNode}</div>
 }
 
 // ── Readonly value display ────────────────────────────────────────────────────
