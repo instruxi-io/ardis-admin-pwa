@@ -81,6 +81,9 @@ export interface ProductEntry {
   description?: string
   verifier_name?: string
   verifier_id?: string
+  // Stable product identity within a verifier: ardis-ms resolves products by
+  // (verifier_id, sku). Defaults server-side to a slug of the name when absent.
+  sku?: string
   credential_type?: string
   order_type?: string
   verifier_logo_url?: string
