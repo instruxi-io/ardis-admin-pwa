@@ -71,6 +71,10 @@ function parseBundle(raw: string): ViewModelBundle | null {
         // Extract manifest fields from x- extensions in the JSON Schema
         name:            (schema['title'] as string)           ?? '',
         verifier_id:     (schema['x-verifier-id'] as string)   ?? '',
+        // Optional. The server falls back to a slug of the name, so an absent
+        // x-sku is normal — but identity is (verifier_id, sku) either way, which
+        // is why the product index below must key on it and not credential_type.
+        sku:             (schema['x-sku'] as string)            ?? '',
         verifier_name:   (schema['x-verifier-name'] as string) ?? '',
         credential_type: (schema['x-credential-type'] as string) ?? '',
         order_type:      (schema['x-order-type'] as string)    ?? 'license',
@@ -146,6 +150,18 @@ function deepEqual(a: unknown, b: unknown): boolean {
 function nextVersion(v: string): string {
   const m = /^v(\d+)$/.exec(v)
   return m ? `v${Number(m[1]) + 1}` : 'v2'
+}
+
+// Mirrors ardis-ms slugify(): the server derives a sku from the product name when
+// the bundle omits x-sku. Reproduced here so the product index finds an existing
+// product whether or not its bundle declared one.
+function skuFor(bundle: ViewModelBundle): string {
+  const explicit = (bundle.sku as string)?.trim()
+  if (explicit) return explicit
+  return ((bundle.name as string) ?? '')
+    .toLowerCase().trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
 }
 
 function validateBundle(obj: ViewModelBundle): ValidationResult {
@@ -235,8 +251,34 @@ function validateBundle(obj: ViewModelBundle): ValidationResult {
           pass: (xp.addons ?? []).every(a => typeof a.amount === 'number' && a.amount >= 0),
           message: 'Every add-on must have an amount defined in cents (use 0 for a free add-on)',
         },
+        {
+          // The server cross-checks add-on fields too. Only the tier field was
+          // checked here, so a bundle could pass every check and still come back
+          // 400 invalid_bundle — the worst kind of validation gap.
+          label: 'x-pricing addon fields all exist in order_schema',
+          pass: (xp.addons ?? []).every(a => !!a.field && orderProps.includes(a.field)),
+          message: 'Every add-on field must be a property defined in order_schema',
+        },
+        {
+          // A missing currency silently becomes usd server-side, so one omitted
+          // add-on in a GBP product yields a mixed-currency Stripe product.
+          label: 'every tier and addon sets an explicit currency',
+          pass: [...(xp.options ?? []), ...(xp.addons ?? [])]
+            .every(e => !!(e as { currency?: string }).currency),
+          message: 'Set currency explicitly on every tier and add-on — a missing one defaults to usd',
+        },
+        {
+          label: 'order_schema has properties for pricing fields to reference',
+          pass: orderProps.length > 0,
+          message: 'Parameterised pricing needs order_schema properties, or checkout can never resolve a price',
+        },
       ] as CheckResult[]
     })(),
+    {
+      label: 'sku is lowercase alphanumeric (a-z, 0-9, hyphens) when set',
+      pass: !obj.sku || /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(obj.sku as string),
+      message: 'x-sku must be lowercase letters, numbers, and hyphens only',
+    },
     // ── Security ──
     {
       label: 'No external URL references',
@@ -424,10 +466,18 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
 
   const validation = bundle ? validateBundle(bundle) : null
 
-  // For developers, lock verifier_id to their username
-  const effectiveBundle = bundle && isDeveloper && username
-    ? { ...bundle, verifier_id: username }
-    : bundle
+  // The bundle's own verifier_id is authoritative. This used to be overwritten
+  // with the developer's username, from when verifier_id was the account username
+  // by convention. It no longer is: a verifier_id lives in the metadata of the
+  // Enforcer group an account belongs to, and the server authorises against that
+  // group membership. Usernames and verifier ids routinely differ (ardis-vp vs
+  // ardis), so overwriting produced a bundle the server would reject, or worse
+  // publish under the wrong verifier.
+  //
+  // Sending the bundle as authored means the server's group-membership check is
+  // the single place authorisation is decided, and a mismatch surfaces as an
+  // explicit 403 rather than silently rewritten data.
+  const effectiveBundle = bundle
 
   const { data: schemas = [], isLoading: schemasLoading } = useQuery({
     queryKey: ['schemas'],
@@ -443,15 +493,21 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
 
   // Index products by verifier_id/credential_type for fast lookup
   const productIndex = products.reduce<Record<string, ProductEntry>>((acc, p) => {
-    if (p.verifier_id && p.credential_type) {
-      acc[`${p.verifier_id}/${p.credential_type}`] = p
+    // Keyed by the product's real identity. This was verifier_id/credential_type,
+    // which collides the moment a vendor sells two products of the same type — the
+    // second overwrote the first, so stripe_product_id was handed to the wrong
+    // product and publishing edited someone else's entry.
+    const sku = p.sku?.trim() || skuFor({ name: p.name })
+    if (p.verifier_id && sku) {
+      acc[`${p.verifier_id}/${sku}`] = p
     }
     return acc
   }, {})
 
   const publishMutation = useMutation({
     mutationFn: async (b: ViewModelBundle) => {
-      const verifierId     = isDeveloper && username ? username : b.verifier_id as string
+      // Authored value, not the username — see effectiveBundle above.
+      const verifierId     = b.verifier_id as string
       const credentialType = b.credential_type as string
       const version        = (b.version as string) ?? 'v1'
 
@@ -507,12 +563,13 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
       // 2. Publish product to Stripe. Pass the existing Stripe product ID if one
       // already exists for this verifier/credential_type so ardis-ms updates it
       // instead of creating a duplicate.
-      const existingProduct = productIndex[`${verifierId}/${credentialType}`]
+      const existingProduct = productIndex[`${verifierId}/${skuFor(b)}`]
       await productsApi.publish({
         stripe_product_id: existingProduct?.id,
         name:              b.name as string,
         description:       b.description as string | undefined,
         verifier_id:       verifierId,
+        sku:               skuFor(b),
         verifier_name:     (b.verifier_name as string) ?? verifierId,
         order_type:        (b.order_type as string) ?? 'license',
         credential_type:   credentialType,
