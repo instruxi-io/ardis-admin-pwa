@@ -1010,7 +1010,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
             <p className="text-sm text-muted-foreground mt-1">
               {isPlatformMode
                 ? 'Manage the platform subscription that gates vault and catalogue access for all professionals. Tenant admin only.'
-                : 'Import a vendor-supplied JSON bundle — validated, previewed, then published to Storj.'}
+                : 'Credential schemas and the products that render with them. Schemas are versioned and immutable; products are edited in place.'}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1029,11 +1029,26 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
             <CardHeader className="pb-3">
               <CardTitle className="text-sm flex items-center gap-2">
                 <FileJson size={14} />
-                Import View Model Bundle
+                Import Credential Schema or Product
               </CardTitle>
-              <p className="text-xs text-muted-foreground">
-                The vendor provides a single JSON file containing the manifest, order schema, and display schema.
-              </p>
+              {/* This described the old combined bundle — "a single JSON file" —
+                  which is now the opposite of what the operator has to do, on the
+                  one screen where they have not yet dropped a file and so have no
+                  other signal to go on. */}
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p>
+                  A product takes two files. Upload the{' '}
+                  <span className="font-medium text-foreground/80">credential schema</span> first — what the
+                  vendor returns, versioned and immutable — then the{' '}
+                  <span className="font-medium text-foreground/80">product</span>, which carries the order
+                  form and pricing.
+                </p>
+                <p>
+                  Order matters: a product is refused until the credential schema it renders with exists.
+                  Each file declares which it is via <span className="font-mono">x-publishes</span>, and
+                  you will be told what it does before anything is published.
+                </p>
+              </div>
             </CardHeader>
             <CardContent className="space-y-6">
 
@@ -1306,7 +1321,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
             {isLoading && <p className="text-sm text-muted-foreground text-center py-8">Loading…</p>}
             {!isLoading && schemas.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-8">
-                No view models published yet. Import a bundle above to get started.
+                Nothing published yet. Upload a credential schema first, then the product that renders with it.
               </p>
             )}
             {(() => {
