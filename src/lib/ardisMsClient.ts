@@ -116,9 +116,28 @@ export const productsApi = {
   },
 }
 
+export interface SchemaDriftRecord {
+  verifier_id: string
+  credential_type: string
+  version: string
+  undeclared_fields: string[]
+  unused_fields: string[]
+  reports: number
+  first_seen: string
+  last_seen: string
+}
+
 export const schemasApi = {
   // ardis-ms registers these as /credential-schemas (renamed from
   // display-schemas). The path here must match or the list comes back empty.
+  // What real credentials carried versus what the schema declares. Reported by
+  // the app when it renders a credential, because only a real payload knows.
+  drift: async (): Promise<SchemaDriftRecord[]> => {
+    const res = await ardisMsClient.get<{ success: boolean; data: SchemaDriftRecord[] }>(
+      '/credential-schemas/drift')
+    return res.data.data ?? []
+  },
+
   list: async (): Promise<SchemaIndexEntry[]> => {
     const res = await ardisMsClient.get<SchemaListResponse>('/credential-schemas')
     return res.data.data ?? []
