@@ -105,6 +105,7 @@ function parseBundle(raw: string): ViewModelBundle | null {
           'x-pricing':          schema['x-pricing'],
           'x-product-role':     (schema['x-product-role'] as string) ?? '',
           'x-price-one-time':   (schema['x-price-one-time'] as number) ?? 0,
+          'x-price-currency':   (schema['x-price-currency'] as string) ?? '',
           data,
         }
       }
@@ -135,6 +136,7 @@ function parseBundle(raw: string): ViewModelBundle | null {
         'x-pricing':          schema['x-pricing'],
         'x-product-role':     (schema['x-product-role'] as string) ?? '',
         'x-price-one-time':   (schema['x-price-one-time'] as number) ?? 0,
+        'x-price-currency':   (schema['x-price-currency'] as string) ?? '',
         data,
       }
     }
@@ -380,6 +382,14 @@ function validateBundle(obj: ViewModelBundle): ValidationResult {
         },
       ] as CheckResult[]
     })(),
+    ...(hasOrder ? [{
+      // The tier/addon currency check below does not cover x-price-one-time,
+      // which had no currency of its own and was hardcoded to usd server-side.
+      // A flat-priced product in any other currency has to say so explicitly.
+      label: 'x-price-currency is a three-letter code when set (flat price defaults to usd)',
+      pass: !obj['x-price-currency'] || /^[a-zA-Z]{3}$/.test(obj['x-price-currency'] as string),
+      message: 'x-price-currency must be a three-letter currency code such as gbp or eur',
+    }] as CheckResult[] : []),
     ...(hasOrder ? [{
       label: 'sku is lowercase alphanumeric (a-z, 0-9, hyphens) when set',
       pass: !obj.sku || /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(obj.sku as string),
@@ -698,6 +708,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
           x_pricing:      (b['x-pricing'] ?? (b as any).x_pricing),
           product_role:   (b as any)['x-product-role'] ?? '',
           price_one_time: (b as any)['x-price-one-time'] ?? 0,
+          price_currency: (b as any)['x-price-currency'] ?? '',
         } as any)
       }
 
