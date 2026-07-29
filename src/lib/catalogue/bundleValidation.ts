@@ -8,6 +8,7 @@
 
 import { kindOf, type ViewModelBundle } from './bundleFormat'
 import type { XPricingConfig } from './pricing'
+import { checkSchema } from './schemaChecks'
 
 export interface CheckResult {
   label: string
@@ -130,6 +131,59 @@ export function validateBundle(obj: ViewModelBundle): ValidationResult {
         message: 'The third object is sample credential data — every key must be a property of the schema',
       },
     ] as CheckResult[] : []),
+    // ── Engine-backed checks ──
+    // Everything above compares keys. These compile the schema and validate the
+    // sample against it, using the same AJV the preview uses, so a file cannot
+    // pass validation here and then fail in the pane beside it.
+    ...(() => {
+      const out: CheckResult[] = []
+      const halves: { label: string; schema: Record<string, unknown>; form: boolean }[] = []
+      if (hasOrder) halves.push({ label: 'order form', schema: orderSchema, form: true })
+      if (hasCredential) halves.push({ label: 'credential schema', schema: dataSchema, form: false })
+
+      for (const half of halves) {
+        if (!half.schema || Object.keys(half.schema).length === 0) continue
+        const sample = (obj.data as Record<string, unknown>) ?? undefined
+        // Sample data belongs to whichever half the file carries; a legacy bundle
+        // has both halves but one sample, which describes the order form.
+        const r = checkSchema(half.schema, half.form || !hasOrder ? sample : undefined, {
+          flagNestedObjects: half.form,
+        })
+
+        out.push({
+          label: `${half.label} is a valid JSON Schema`,
+          pass: r.schemaValid,
+          message: r.schemaError ?? '',
+        })
+
+        if (r.sampleValid !== undefined) {
+          out.push({
+            label: `sample data validates against the ${half.label}`,
+            pass: r.sampleValid,
+            message: r.sampleError
+              ? `The third object does not fit the first: ${r.sampleError}`
+              : '',
+          })
+        }
+
+        out.push({
+          label: `${half.label} required fields all exist`,
+          pass: r.missingRequired.length === 0,
+          message: r.missingRequired.length
+            ? `required names fields that are not defined (${r.missingRequired.join(', ')}), so nobody could ever complete it`
+            : '',
+        })
+
+        out.push({
+          label: `${half.label} avoids constructs the app cannot render`,
+          pass: r.unsupported.length === 0,
+          message: r.unsupported.length
+            ? `The portal preview renders these, the mobile app does not: ${r.unsupported.join(', ')}`
+            : '',
+        })
+      }
+      return out
+    })(),
     // ── Pricing (only checked if x-pricing is present) ──
     ...(() => {
       if (!hasOrder) return []
