@@ -57,8 +57,8 @@ export function CredentialPreview({
         {Object.keys(data).length > 0 ? (
           <div className="[&_button]:hidden [&_.array-item-toolbox]:hidden [&_input]:pointer-events-none [&_select]:pointer-events-none [&_textarea]:pointer-events-none">
             <Form
-              schema={schema as any}
-              uiSchema={{ ...uiSchema as any, 'ui:readonly': true }}
+              schema={schema as never}
+              uiSchema={{ ...uiSchema, 'ui:readonly': true } as never}
               formData={data}
               validator={validator}
               widgets={ardisWidgets}
@@ -76,8 +76,8 @@ export function CredentialPreview({
             </p>
             <div className="[&_button]:hidden [&_.array-item-toolbox]:hidden">
               <Form
-                schema={schema as any}
-                uiSchema={uiSchema as any}
+                schema={schema as never}
+                uiSchema={uiSchema as never}
                 formData={{}}
                 validator={validator}
                 widgets={ardisWidgets}

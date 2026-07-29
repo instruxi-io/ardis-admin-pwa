@@ -269,7 +269,8 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
             throw new Error(
               `Credential schema ${credentialType}/${version} is already published and ` +
               `cannot be changed. Your file's credential schema differs from it — ` +
-              `bump x-version to publish the new shape (e.g. ${nextVersion(version)}).`
+              `bump x-version to publish the new shape (e.g. ${nextVersion(version)}).`,
+              { cause: err },
             )
           }
           setSchemaOutcome(
@@ -306,11 +307,11 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
             version,
             display_schema_path: `display-schemas/${verifierId}/${credentialType}/${version}/schema.json`,
           } : {}),
-          x_pricing:      (b['x-pricing'] ?? (b as any).x_pricing),
-          product_role:   (b as any)['x-product-role'] ?? '',
-          price_one_time: (b as any)['x-price-one-time'] ?? 0,
-          price_currency: (b as any)['x-price-currency'] ?? '',
-        } as any)
+          x_pricing:      b['x-pricing'] ?? b['x_pricing'],
+          product_role:   (b['x-product-role'] as string) ?? '',
+          price_one_time: (b['x-price-one-time'] as number) ?? 0,
+          price_currency: (b['x-price-currency'] as string) ?? '',
+        })
       }
 
       if (kind === 'credential-schema') {
@@ -347,7 +348,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
           setPublishLog(prev => prev.map(s =>
             s.id === file.id      ? { ...s, status: 'failed',  detail: msg } :
             s.status === 'pending' ? { ...s, status: 'skipped', detail: 'not attempted' } : s))
-          throw new Error(`${file.name}: ${msg}`)
+          throw new Error(`${file.name}: ${msg}`, { cause: err })
         }
       }
       return items
@@ -417,7 +418,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
     // Developers may never publish platform-role products. Checked across the
     // whole queue, not just the file on screen — the offending one may not be
     // the one being reviewed.
-    const platform = publishable.find(p => (p.bundle as any)['x-product-role'] === 'platform')
+    const platform = publishable.find(p => p.bundle['x-product-role'] === 'platform')
     if (isDeveloper && platform) {
       toast.error(`${platform.file.name}: platform subscription products may only be published by a tenant admin.`)
       return
@@ -486,20 +487,20 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
       const obj1: Record<string, unknown> = {
         '$id':             `${verifierId}/${credentialType}/${version}`,
         'title':           name,
-        'description':     (product as any)?.description ?? '',
+        'description':     product?.description ?? '',
         'x-verifier-id':   verifierId,
-        'x-verifier-name': (product as any)?.verifier_name ?? verifierId,
+        'x-verifier-name': product?.verifier_name ?? verifierId,
         'x-credential-type': credentialType,
-        'x-order-type':    (product as any)?.order_type ?? 'license',
+        'x-order-type':    product?.order_type ?? 'license',
         'x-version':       version,
         'type':            'object',
-        'properties':      (content.data_schema as any)?.properties ?? {},
+        'properties':      content.data_schema?.['properties'] ?? {},
         'x-data-schema':   content.data_schema ?? {},
         'x-data-ui-schema': content.ui_schema ?? {},
       }
-      if ((product as any)?.x_pricing) obj1['x-pricing'] = (product as any).x_pricing
-      if ((product as any)?.price_one_time) obj1['x-price-one-time'] = (product as any).price_one_time
-      if ((product as any)?.product_role) obj1['x-product-role'] = (product as any).product_role
+      if (product?.x_pricing) obj1['x-pricing'] = product.x_pricing
+      if (product?.price_one_time) obj1['x-price-one-time'] = product.price_one_time
+      if (product?.product_role) obj1['x-product-role'] = product.product_role
 
       const bundle = [obj1, content.ui_schema ?? {}, {}]
       const text = bundle.map(o => JSON.stringify(o, null, 2)).join('\n')
@@ -520,7 +521,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
     const key = `${s.verifier_id}/${s.credential_type}`
     // Any product on this schema being the platform gate makes the schema
     // platform-scoped; in practice the gate is the only product on its type.
-    return (productsByType[key] ?? []).some(p => (p as any).product_role === 'platform')
+    return (productsByType[key] ?? []).some(p => p.product_role === 'platform')
       ? 'platform'
       : ''
   }
@@ -1099,7 +1100,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
             {(() => {
               const entries = Object.entries(grouped)
               const isPlatformKey = (key: string) =>
-                (productsByType[key] ?? []).some(p => (p as any).product_role === 'platform')
+                (productsByType[key] ?? []).some(p => p.product_role === 'platform')
               const platformEntries = entries.filter(([key]) => isPlatformKey(key))
               const vendorEntries   = entries.filter(([key]) => !isPlatformKey(key))
               const renderGroup = ([key, versions]: [string, typeof schemas]) => {

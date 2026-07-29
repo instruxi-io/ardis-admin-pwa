@@ -98,6 +98,14 @@ export interface ProductEntry {
   addons?: ProductAddon[]
   published_at?: string
   published_by?: string
+  // Sent on publish, returned in the product response. These were absent from the
+  // type, so every publish call cast the whole payload to `any` — which is also
+  // why price_currency could be added without anything checking it reached here.
+  version?: string
+  x_pricing?: unknown
+  product_role?: string
+  price_currency?: string
+  sample_data?: unknown
 }
 
 export const productsApi = {

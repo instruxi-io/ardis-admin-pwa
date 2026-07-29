@@ -10,7 +10,7 @@ import type { XPricingConfig } from '@/lib/catalogue/pricing'
 import { money } from '@/lib/catalogue/pricing'
 
 export function PricingMapper({ bundle }: { bundle: ViewModelBundle }) {
-  const rawXPricing = (bundle['x-pricing'] ?? (bundle as any).x_pricing) as XPricingConfig | undefined
+  const rawXPricing = (bundle['x-pricing'] ?? bundle['x_pricing']) as XPricingConfig | undefined
   const oneTime = (bundle['x-price-one-time'] as number) ?? 0
   const oneTimeCurrency = (bundle['x-price-currency'] as string) || 'usd'
   const hasTiers = !!rawXPricing && (!!rawXPricing.options?.length || !!rawXPricing.addons?.length)
