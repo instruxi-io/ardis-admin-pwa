@@ -67,7 +67,52 @@ function parseBundle(raw: string): ViewModelBundle | null {
     if (objects.length === 3) {
       // Standard triple format: schema | uiSchema | data
       const [schema, uiSchema, data] = objects
+      const publishes = (schema['x-publishes'] as string)?.trim() ?? ''
+
+      // A credential schema stands alone. It describes what the vendor returns,
+      // is immutable per version, and has no order form, pricing or sku. Object
+      // 1 IS the schema, so it round-trips through an RJSF editor untouched.
+      if (publishes === 'credential-schema') {
+        return {
+          kind:            'credential-schema',
+          name:            (schema['title'] as string)             ?? '',
+          verifier_id:     (schema['x-verifier-id'] as string)     ?? '',
+          credential_type: (schema['x-credential-type'] as string) ?? '',
+          version:         (schema['x-version'] as string)         ?? '',
+          description:     (schema['description'] as string)       ?? '',
+          data_schema:     schema,
+          ui_schema:       uiSchema,
+          data,
+        }
+      }
+
+      // A product is the mutable half: order form, pricing, and the
+      // credential_type naming the schema its results render with. It carries no
+      // version deliberately — re-publishing edits the product in place, where a
+      // credential schema would have to be a new version.
+      if (publishes === 'product') {
+        return {
+          kind:            'product',
+          name:            (schema['title'] as string)             ?? '',
+          verifier_id:     (schema['x-verifier-id'] as string)     ?? '',
+          sku:             (schema['x-sku'] as string)             ?? '',
+          verifier_name:   (schema['x-verifier-name'] as string)   ?? '',
+          credential_type: (schema['x-credential-type'] as string) ?? '',
+          order_type:      (schema['x-order-type'] as string)      ?? 'license',
+          description:     (schema['description'] as string)       ?? '',
+          order_schema:    schema,
+          order_ui_schema: uiSchema,
+          'x-pricing':          schema['x-pricing'],
+          'x-product-role':     (schema['x-product-role'] as string) ?? '',
+          'x-price-one-time':   (schema['x-price-one-time'] as number) ?? 0,
+          data,
+        }
+      }
+
+      // No x-publishes: a legacy combined bundle, where the credential schema is
+      // nested under x-data-schema.
       return {
+        kind: 'bundle',
         // Extract manifest fields from x- extensions in the JSON Schema
         name:            (schema['title'] as string)           ?? '',
         verifier_id:     (schema['x-verifier-id'] as string)   ?? '',
@@ -96,7 +141,7 @@ function parseBundle(raw: string): ViewModelBundle | null {
 
     if (objects.length === 1) {
       // Legacy single-object format
-      return objects[0] as ViewModelBundle
+      return { kind: 'bundle', ...(objects[0] as ViewModelBundle) }
     }
 
     return null
@@ -106,6 +151,21 @@ function parseBundle(raw: string): ViewModelBundle | null {
 }
 
 type ViewModelBundle = Record<string, unknown>
+
+// What a file publishes. The two-file layout says so explicitly via x-publishes,
+// so an order form and a credential schema can never be taken for one another.
+// Files without it are the older combined bundle and keep working.
+type BundleKind = 'product' | 'credential-schema' | 'bundle'
+
+function kindOf(b: ViewModelBundle): BundleKind {
+  return (b.kind as BundleKind) ?? 'bundle'
+}
+
+const KIND_LABEL: Record<BundleKind, string> = {
+  product: 'Product (order form + pricing)',
+  'credential-schema': 'Credential schema',
+  bundle: 'Combined bundle (legacy)',
+}
 
 interface CheckResult {
   label: string
@@ -165,6 +225,13 @@ function skuFor(bundle: ViewModelBundle): string {
 }
 
 function validateBundle(obj: ViewModelBundle): ValidationResult {
+  const kind = kindOf(obj)
+  // A product file carries the order form and pricing; a credential-schema file
+  // carries the display schema. Only a legacy combined bundle has both, so
+  // checking a file against the half it does not contain would fail every time.
+  const hasOrder      = kind === 'product' || kind === 'bundle'
+  const hasCredential = kind === 'credential-schema' || kind === 'bundle'
+
   const orderSchema = (obj.order_schema as Record<string, unknown>) ?? {}
   const dataSchema  = (obj.data_schema  as Record<string, unknown>) ?? {}
   const orderUi     = (obj.order_ui_schema as Record<string, unknown>) ?? {}
@@ -174,8 +241,9 @@ function validateBundle(obj: ViewModelBundle): ValidationResult {
     // ── Manifest ──
     {
       label: 'Has required fields: name, verifier_id, credential_type',
-      pass: typeof obj.name === 'string' && typeof obj.verifier_id === 'string' && typeof obj.credential_type === 'string',
-      message: 'name, verifier_id, and credential_type must be present as strings',
+      pass: typeof obj.name === 'string' && (obj.name as string).trim() !== '' &&
+            typeof obj.verifier_id === 'string' && typeof obj.credential_type === 'string',
+      message: 'name, verifier_id, and credential_type must be present as strings — a product takes its name from the schema title',
     },
     {
       label: 'verifier_id is lowercase alphanumeric (a-z, 0-9, hyphens)',
@@ -183,52 +251,90 @@ function validateBundle(obj: ViewModelBundle): ValidationResult {
       message: 'verifier_id must be lowercase letters, numbers, and hyphens only',
     },
     {
+      // credential_type is interpolated into the schema's storage path and is how
+      // a product finds the schema its results render with.
+      label: 'credential_type is a valid slug',
+      pass: /^[a-z0-9-]+$/.test((obj.credential_type as string) ?? ''),
+      message: 'credential_type must be lowercase letters, numbers, and hyphens only',
+    },
+    // ── Credential schema version (its identity; immutable once published) ──
+    ...(kind === 'credential-schema' ? [{
+      label: 'x-version is set and looks like v1, v2, …',
+      pass: /^v\d+$/.test((obj.version as string) ?? ''),
+      message: 'A credential schema needs an explicit x-version — it is immutable once published, so the version IS its identity',
+    }] as CheckResult[] : []),
+    ...(hasOrder ? [{
       label: 'order_type is a valid slug (product-agnostic — vendors define their own)',
       pass: !obj.order_type || /^[a-z0-9-]+$/.test(obj.order_type as string),
       message: 'order_type must be lowercase letters, numbers, and hyphens only (no fixed list)',
-    },
+    }] as CheckResult[] : []),
     // ── Order schema ──
-    {
-      label: 'order_schema.type is "object"',
-      pass: orderSchema.type === 'object',
-      message: 'order_schema must have type: "object"',
-    },
-    {
-      label: 'order_schema has a properties field',
-      pass: typeof orderSchema.properties === 'object' && orderSchema.properties !== null,
-      message: 'order_schema must define properties',
-    },
-    {
-      label: 'order_ui_schema ui:order references valid fields',
-      pass: (() => {
-        const order = (orderUi['ui:order'] as string[]) ?? []
-        const props = Object.keys((orderSchema.properties as object) ?? {})
-        return order.every(f => props.includes(f))
-      })(),
-      message: 'order_ui_schema ui:order references fields not defined in order_schema.properties',
-    },
+    ...(hasOrder ? [
+      {
+        label: 'order_schema.type is "object"',
+        pass: orderSchema.type === 'object',
+        message: 'order_schema must have type: "object"',
+      },
+      {
+        label: 'order_schema has a properties field',
+        pass: typeof orderSchema.properties === 'object' && orderSchema.properties !== null,
+        message: 'order_schema must define properties',
+      },
+      {
+        label: 'order_ui_schema ui:order references valid fields',
+        pass: (() => {
+          const order = (orderUi['ui:order'] as string[]) ?? []
+          const props = Object.keys((orderSchema.properties as object) ?? {})
+          return order.every(f => props.includes(f))
+        })(),
+        message: 'order_ui_schema ui:order references fields not defined in order_schema.properties',
+      },
+      {
+        // The point of the split: object 3 is the formData pane, so it must be
+        // valid against object 1 or the file did not come from a working editor.
+        label: 'sample order data only uses fields the order form defines',
+        pass: (() => {
+          const props = Object.keys((orderSchema.properties as object) ?? {})
+          const sample = (obj.data as Record<string, unknown>) ?? {}
+          return Object.keys(sample).every(k => props.includes(k))
+        })(),
+        message: 'The third object is sample order data — every key must be a property of the order form',
+      },
+    ] as CheckResult[] : []),
     // ── Display schema ──
-    {
-      label: 'data_schema.type is "object"',
-      pass: dataSchema.type === 'object',
-      message: 'data_schema must have type: "object"',
-    },
-    {
-      label: 'data_schema has a properties field',
-      pass: typeof dataSchema.properties === 'object' && dataSchema.properties !== null,
-      message: 'data_schema must define properties',
-    },
-    {
-      label: 'ui_schema ui:groups references valid fields (if present)',
-      pass: (() => {
-        const groups = (displayUi['ui:groups'] as { fields: string[] }[]) ?? []
-        const props = Object.keys((dataSchema.properties as object) ?? {})
-        return groups.every(g => g.fields.every(f => props.includes(f)))
-      })(),
-      message: 'ui_schema ui:groups references fields not defined in data_schema.properties',
-    },
+    ...(hasCredential ? [
+      {
+        label: 'data_schema.type is "object"',
+        pass: dataSchema.type === 'object',
+        message: 'data_schema must have type: "object"',
+      },
+      {
+        label: 'data_schema has a properties field',
+        pass: typeof dataSchema.properties === 'object' && dataSchema.properties !== null,
+        message: 'data_schema must define properties',
+      },
+      {
+        label: 'ui_schema ui:groups references valid fields (if present)',
+        pass: (() => {
+          const groups = (displayUi['ui:groups'] as { fields: string[] }[]) ?? []
+          const props = Object.keys((dataSchema.properties as object) ?? {})
+          return groups.every(g => g.fields.every(f => props.includes(f)))
+        })(),
+        message: 'ui_schema ui:groups references fields not defined in data_schema.properties',
+      },
+      {
+        label: 'sample credential data only uses fields the schema defines',
+        pass: (() => {
+          const props = Object.keys((dataSchema.properties as object) ?? {})
+          const sample = (obj.data as Record<string, unknown>) ?? {}
+          return Object.keys(sample).every(k => props.includes(k))
+        })(),
+        message: 'The third object is sample credential data — every key must be a property of the schema',
+      },
+    ] as CheckResult[] : []),
     // ── Pricing (only checked if x-pricing is present) ──
     ...(() => {
+      if (!hasOrder) return []
       const xp = (obj['x-pricing'] ?? (obj as any).x_pricing) as XPricingConfig | undefined
       if (!xp) return [] // no pricing = free product, valid
 
@@ -274,11 +380,11 @@ function validateBundle(obj: ViewModelBundle): ValidationResult {
         },
       ] as CheckResult[]
     })(),
-    {
+    ...(hasOrder ? [{
       label: 'sku is lowercase alphanumeric (a-z, 0-9, hyphens) when set',
       pass: !obj.sku || /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(obj.sku as string),
       message: 'x-sku must be lowercase letters, numbers, and hyphens only',
-    },
+    }] as CheckResult[] : []),
     // ── Security ──
     {
       label: 'No external URL references',
@@ -506,10 +612,11 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
 
   const publishMutation = useMutation({
     mutationFn: async (b: ViewModelBundle) => {
+      const kind = kindOf(b)
       // Authored value, not the username — see effectiveBundle above.
       const verifierId     = b.verifier_id as string
       const credentialType = b.credential_type as string
-      const version        = (b.version as string) ?? 'v1'
+      const version        = (b.version as string) || 'v1'
 
       // 1. Publish the credential schema.
       //
@@ -530,58 +637,83 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
         sample_data: (b.data        as Record<string, unknown>) ?? undefined,
       }
 
-      try {
-        await schemasApi.publish({
-          verifier_id:     verifierId,
-          credential_type: credentialType,
-          version,
-          ...desiredSchema,
-        })
-        setSchemaOutcome(`Credential schema ${credentialType}/${version} published.`)
-      } catch (err) {
-        if (!isConflict(err)) throw err
+      const publishCredentialSchema = async () => {
+        try {
+          await schemasApi.publish({
+            verifier_id:     verifierId,
+            credential_type: credentialType,
+            version,
+            ...desiredSchema,
+          })
+          setSchemaOutcome(`Credential schema ${credentialType}/${version} published.`)
+        } catch (err) {
+          if (!isConflict(err)) throw err
 
-        const published = await schemasApi.get(verifierId, credentialType, version)
-        const changed =
-          !deepEqual(published.data_schema, desiredSchema.data_schema) ||
-          !deepEqual(published.ui_schema ?? {}, desiredSchema.ui_schema)
+          const published = await schemasApi.get(verifierId, credentialType, version)
+          const changed =
+            !deepEqual(published.data_schema, desiredSchema.data_schema) ||
+            !deepEqual(published.ui_schema ?? {}, desiredSchema.ui_schema)
 
-        if (changed) {
-          throw new Error(
-            `Credential schema ${credentialType}/${version} is already published and ` +
-            `cannot be changed. Your bundle's credential schema differs from it — ` +
-            `bump x-version to publish the new shape (e.g. ${nextVersion(version)}). ` +
-            `Everything else in the bundle can be re-published freely.`
+          if (changed) {
+            throw new Error(
+              `Credential schema ${credentialType}/${version} is already published and ` +
+              `cannot be changed. Your file's credential schema differs from it — ` +
+              `bump x-version to publish the new shape (e.g. ${nextVersion(version)}).`
+            )
+          }
+          setSchemaOutcome(
+            `Credential schema ${credentialType}/${version} is already published and unchanged — ` +
+            `nothing to do.`
           )
         }
-        setSchemaOutcome(
-          `Credential schema ${credentialType}/${version} already published and unchanged — ` +
-          `updating the product only.`
-        )
       }
 
-      // 2. Publish product to Stripe. Pass the existing Stripe product ID if one
-      // already exists for this verifier/credential_type so ardis-ms updates it
-      // instead of creating a duplicate.
-      const existingProduct = productIndex[`${verifierId}/${skuFor(b)}`]
-      await productsApi.publish({
-        stripe_product_id: existingProduct?.id,
-        name:              b.name as string,
-        description:       b.description as string | undefined,
-        verifier_id:       verifierId,
-        sku:               skuFor(b),
-        verifier_name:     (b.verifier_name as string) ?? verifierId,
-        order_type:        (b.order_type as string) ?? 'license',
-        credential_type:   credentialType,
-        version,
-        active:            true,
-        order_schema:      b.order_schema as Record<string, unknown>,
-        order_ui_schema:   (b.order_ui_schema as Record<string, unknown>) ?? {},
-        display_schema_path: `display-schemas/${verifierId}/${credentialType}/${version}/schema.json`,
-        x_pricing:      (b['x-pricing'] ?? (b as any).x_pricing),
-        product_role:   (b as any)['x-product-role'] ?? '',
-        price_one_time: (b as any)['x-price-one-time'] ?? 0,
-      } as any)
+      // Publish the product to Stripe. Pass the existing Stripe product ID if one
+      // already exists for this verifier/sku so ardis-ms updates it instead of
+      // creating a duplicate.
+      //
+      // pinSchemaVersion is only true for a legacy combined bundle, where the
+      // product and the credential schema were published together and the product
+      // pointed at that exact version. A split product names a credential_type and
+      // no version: it keeps working when a new schema version is published,
+      // which is the whole reason the halves were separated.
+      const publishProduct = async (pinSchemaVersion: boolean) => {
+        const existingProduct = productIndex[`${verifierId}/${skuFor(b)}`]
+        await productsApi.publish({
+          stripe_product_id: existingProduct?.id,
+          name:              b.name as string,
+          description:       b.description as string | undefined,
+          verifier_id:       verifierId,
+          sku:               skuFor(b),
+          verifier_name:     (b.verifier_name as string) || verifierId,
+          order_type:        (b.order_type as string) ?? 'license',
+          credential_type:   credentialType,
+          active:            true,
+          order_schema:      b.order_schema as Record<string, unknown>,
+          order_ui_schema:   (b.order_ui_schema as Record<string, unknown>) ?? {},
+          ...(pinSchemaVersion ? {
+            version,
+            display_schema_path: `display-schemas/${verifierId}/${credentialType}/${version}/schema.json`,
+          } : {}),
+          x_pricing:      (b['x-pricing'] ?? (b as any).x_pricing),
+          product_role:   (b as any)['x-product-role'] ?? '',
+          price_one_time: (b as any)['x-price-one-time'] ?? 0,
+        } as any)
+      }
+
+      if (kind === 'credential-schema') {
+        await publishCredentialSchema()
+        return
+      }
+      if (kind === 'product') {
+        // No schema publish here. The server refuses a product whose
+        // credential_type has no published schema, so the ordering is enforced
+        // there rather than guessed at from this side.
+        await publishProduct(false)
+        return
+      }
+      await publishCredentialSchema()
+      await publishProduct(true)
     },
     onMutate: () => setSchemaOutcome(null),
     onSuccess: () => {
@@ -589,9 +721,12 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
       queryClient.invalidateQueries({ queryKey: ['products'] })
       // Say which halves actually changed. "Published" alone is ambiguous when
       // the credential schema was left alone because its version already exists.
-      toast.success(schemaOutcome
-        ? `Product published. ${schemaOutcome}`
-        : 'Product and credential schema published')
+      const kind = effectiveBundle ? kindOf(effectiveBundle) : 'bundle'
+      toast.success(
+        kind === 'credential-schema' ? (schemaOutcome ?? 'Credential schema published')
+        : kind === 'product'         ? 'Product published to Stripe'
+        : schemaOutcome              ? `Product published. ${schemaOutcome}`
+        :                              'Product and credential schema published')
       resetImport()
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Publish failed'),
@@ -846,6 +981,19 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                 <div className="space-y-3">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">2 — Preview</p>
 
+                  {/* What this file publishes, stated before anything else: the
+                      two halves have different rules, and a credential schema
+                      cannot be taken back once published. */}
+                  <div className="flex items-center gap-2 p-3 bg-muted/20 rounded-lg border border-border text-xs">
+                    <span className="text-muted-foreground/60 uppercase text-[10px] tracking-wide">Publishes</span>
+                    <span className="font-mono font-semibold text-primary">{KIND_LABEL[kindOf(effectiveBundle)]}</span>
+                    {kindOf(effectiveBundle) === 'bundle' && (
+                      <span className="text-muted-foreground">
+                        — no x-publishes, so this is read as the older combined format
+                      </span>
+                    )}
+                  </div>
+
                   {/* Summary */}
                   <div className="grid grid-cols-4 gap-3 p-3 bg-muted/20 rounded-lg border border-border text-xs">
                     <div>
@@ -862,27 +1010,38 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                     </div>
                     <div>
                       <span className="text-muted-foreground/60 uppercase text-[10px] tracking-wide">Version</span>
-                      <p className="font-mono mt-0.5 text-primary">{(effectiveBundle.version as string) ?? 'v1'}</p>
+                      <p className="font-mono mt-0.5 text-primary">
+                        {kindOf(effectiveBundle) === 'product'
+                          ? '— products are mutable'
+                          : ((effectiveBundle.version as string) || 'v1')}
+                      </p>
                     </div>
                   </div>
 
-                  {/* Always-on preview */}
-                  <div className="grid grid-cols-2 gap-6 py-6 px-4 bg-muted/20 rounded-xl border border-border overflow-x-auto">
-                    <PreviewErrorBoundary label="Order form">
-                      <OrderFormPreview
-                        schema={(effectiveBundle.order_schema as Record<string, unknown>) ?? {}}
-                        uiSchema={(effectiveBundle.order_ui_schema as Record<string, unknown>) ?? {}}
-                      />
-                    </PreviewErrorBoundary>
-                    <PreviewErrorBoundary label="Credential">
-                      <CredentialPreview
-                        schema={(effectiveBundle.data_schema as Record<string, unknown>) ?? {}}
-                        uiSchema={(effectiveBundle.ui_schema as Record<string, unknown>) ?? {}}
-                        data={(effectiveBundle.data as Record<string, unknown>) ?? {}}
-                        verifierName={effectiveBundle.verifier_name as string}
-                        credentialType={effectiveBundle.credential_type as string}
-                      />
-                    </PreviewErrorBoundary>
+                  {/* Preview only the half this file actually carries. Rendering a
+                      credential pane for a product file previewed the order form
+                      as if it were the credential, which is exactly the confusion
+                      the split exists to remove. */}
+                  <div className={`grid ${kindOf(effectiveBundle) === 'bundle' ? 'grid-cols-2' : 'grid-cols-1'} gap-6 py-6 px-4 bg-muted/20 rounded-xl border border-border overflow-x-auto`}>
+                    {kindOf(effectiveBundle) !== 'credential-schema' && (
+                      <PreviewErrorBoundary label="Order form">
+                        <OrderFormPreview
+                          schema={(effectiveBundle.order_schema as Record<string, unknown>) ?? {}}
+                          uiSchema={(effectiveBundle.order_ui_schema as Record<string, unknown>) ?? {}}
+                        />
+                      </PreviewErrorBoundary>
+                    )}
+                    {kindOf(effectiveBundle) !== 'product' && (
+                      <PreviewErrorBoundary label="Credential">
+                        <CredentialPreview
+                          schema={(effectiveBundle.data_schema as Record<string, unknown>) ?? {}}
+                          uiSchema={(effectiveBundle.ui_schema as Record<string, unknown>) ?? {}}
+                          data={(effectiveBundle.data as Record<string, unknown>) ?? {}}
+                          verifierName={effectiveBundle.verifier_name as string}
+                          credentialType={effectiveBundle.credential_type as string}
+                        />
+                      </PreviewErrorBoundary>
+                    )}
                   </div>
                 </div>
               )}
@@ -903,8 +1062,9 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                 </div>
               )}
 
-              {/* Step 4 — Stripe Pricing (auto-created on publish) */}
-              {validation?.pass && effectiveBundle && (
+              {/* Step 4 — Stripe Pricing (auto-created on publish). A credential
+                  schema has no pricing: it is not a thing anyone buys. */}
+              {validation?.pass && effectiveBundle && kindOf(effectiveBundle) !== 'credential-schema' && (
                 <PricingMapper bundle={effectiveBundle} />
               )}
 
@@ -920,7 +1080,11 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                       <div className="space-y-1">
                         <p className="text-xs font-semibold text-amber-600">Review before publishing</p>
                         <p className="text-xs text-muted-foreground">
-                          Publishing will create or update the following in Stripe and Storj. This cannot be undone — a new version must be published to make changes.
+                          {kindOf(effectiveBundle) === 'credential-schema'
+                            ? 'This publishes a credential schema to Storj. A published version is immutable — correcting it means publishing a new version, and credentials already issued keep rendering with this one.'
+                            : kindOf(effectiveBundle) === 'product'
+                            ? 'This creates or updates the product in Stripe. Prices are immutable, so a changed amount archives the old price and creates a new one; anything holding the old price id stops working.'
+                            : 'Publishing will create or update the following in Stripe and Storj. This cannot be undone — a new version must be published to make changes.'}
                         </p>
                       </div>
                     </div>
@@ -929,14 +1093,24 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                         <span className="text-muted-foreground/60 uppercase text-[10px] tracking-wide block">Verifier ID</span>
                         <span className="font-mono font-semibold text-foreground">{effectiveBundle.verifier_id as string}</span>
                       </div>
-                      <div className="bg-background/60 rounded p-2">
-                        <span className="text-muted-foreground/60 uppercase text-[10px] tracking-wide block">Schema</span>
-                        <span className="font-mono font-semibold text-foreground">{effectiveBundle.credential_type as string}/{(effectiveBundle.version as string) ?? 'v1'}</span>
-                      </div>
-                      <div className="bg-background/60 rounded p-2">
-                        <span className="text-muted-foreground/60 uppercase text-[10px] tracking-wide block">Product</span>
-                        <span className="font-mono font-semibold text-foreground truncate block">{effectiveBundle.name as string}</span>
-                      </div>
+                      {kindOf(effectiveBundle) !== 'product' && (
+                        <div className="bg-background/60 rounded p-2">
+                          <span className="text-muted-foreground/60 uppercase text-[10px] tracking-wide block">Schema</span>
+                          <span className="font-mono font-semibold text-foreground">{effectiveBundle.credential_type as string}/{(effectiveBundle.version as string) || 'v1'}</span>
+                        </div>
+                      )}
+                      {kindOf(effectiveBundle) !== 'credential-schema' && (
+                        <div className="bg-background/60 rounded p-2">
+                          <span className="text-muted-foreground/60 uppercase text-[10px] tracking-wide block">Product</span>
+                          <span className="font-mono font-semibold text-foreground truncate block">{effectiveBundle.name as string}</span>
+                        </div>
+                      )}
+                      {kindOf(effectiveBundle) === 'product' && (
+                        <div className="bg-background/60 rounded p-2">
+                          <span className="text-muted-foreground/60 uppercase text-[10px] tracking-wide block">Renders with</span>
+                          <span className="font-mono font-semibold text-foreground truncate block">{effectiveBundle.credential_type as string}</span>
+                        </div>
+                      )}
                     </div>
                     {/* Confirmation checkbox */}
                     <label className="flex items-start gap-2 cursor-pointer select-none">
@@ -958,7 +1132,10 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                       disabled={publishMutation.isPending || !publishConfirmed}
                       size="sm"
                     >
-                      {publishMutation.isPending ? 'Publishing…' : 'Publish to Storj & Stripe'}
+                      {publishMutation.isPending ? 'Publishing…'
+                        : kindOf(effectiveBundle) === 'credential-schema' ? 'Publish credential schema'
+                        : kindOf(effectiveBundle) === 'product' ? 'Publish product to Stripe'
+                        : 'Publish to Storj & Stripe'}
                     </Button>
                     <p className="text-xs text-muted-foreground">
                       {!publishConfirmed ? 'Check the box above to enable publish' : 'Ready to publish'}
