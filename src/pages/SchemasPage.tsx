@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { OrderFormPreview, CredentialPreview } from '@/components/ui/schema-preview'
 import { schemasApi, productsApi, type SchemaIndexEntry, type ProductEntry, type SchemaDriftRecord } from '@/lib/ardisMsClient'
+import { suggestGroups } from '@/lib/suggestGroups'
 import { useAuth } from '@/context/AuthContext'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -618,6 +619,27 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
     if (!selected) return
     setFiles(prev => prev.map(f => (f.id === selected.id ? { ...f, edited: text } : f)))
     setPublishConfirmed(false)
+  }
+
+  // Writes generated ui:groups into the file on screen. The vendor edits titles
+  // and regroups from there, which is a different job from being told the key
+  // exists and left to place it — the RJSF playground neither renders ui:groups
+  // nor offers a way to author it, so there is nowhere else to learn it.
+  const applySuggestedGroups = () => {
+    if (!selected || !bundle) return
+    const objects = parseMultipleJsonObjects(selected.edited ?? selected.raw)
+    if (objects.length !== 3) return
+    const groups = suggestGroups(
+      objects[0] as Record<string, unknown>,
+      objects[1] as Record<string, unknown>,
+    )
+    if (groups.length < 2) {
+      toast.error('Not enough distinct fields to split into steps')
+      return
+    }
+    objects[1] = { ...(objects[1] as Record<string, unknown>), 'ui:groups': groups }
+    setSelectedRaw(objects.map(o => JSON.stringify(o, null, 2)).join('\n'))
+    toast.success(`Split into ${groups.length} steps — edit the titles below`)
   }
 
   const addFiles = (dropped: { name: string; raw: string }[]) => {
@@ -1408,6 +1430,37 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                       </p>
                     </div>
                   </div>
+
+                  {/* A vendor has no way to discover ui:groups: the RJSF
+                      playground ignores it and offers nothing to author it with,
+                      so a flat form is the only thing they can produce there.
+                      Offered rather than applied — plenty of products are
+                      correctly a single page. */}
+                  {kindOf(effectiveBundle) === 'product' &&
+                    (() => {
+                      const ui = (effectiveBundle.order_ui_schema as Record<string, unknown>) ?? {}
+                      const existing = Array.isArray(ui['ui:groups']) ? (ui['ui:groups'] as unknown[]).length : 0
+                      if (existing >= 2) return null
+                      const would = suggestGroups(
+                        (effectiveBundle.order_schema as Record<string, unknown>) ?? {},
+                        ui,
+                      )
+                      if (would.length < 2) return null
+                      return (
+                        <div className="flex items-start justify-between gap-4 p-3 rounded-lg border border-border bg-muted/20">
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium">This renders as one long page</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              It can be {would.length} steps instead: {would.map(g => g.title).join(' · ')}.
+                              Titles and grouping are yours to edit afterwards.
+                            </p>
+                          </div>
+                          <Button size="sm" variant="outline" onClick={applySuggestedGroups} className="shrink-0">
+                            Split into steps
+                          </Button>
+                        </div>
+                      )
+                    })()}
 
                   {/* Preview only the half this file actually carries. Rendering a
                       credential pane for a product file previewed the order form
