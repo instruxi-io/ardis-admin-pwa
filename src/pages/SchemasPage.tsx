@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   Upload, CheckCircle2, XCircle, AlertCircle, ChevronDown,
-  ChevronUp, Database, FileJson, Eye
+  ChevronUp, Database, FileJson, Eye, Package
 } from 'lucide-react'
 import { OrderFormPreview, CredentialPreview } from '@/components/ui/schema-preview'
 import { schemasApi, productsApi, type SchemaIndexEntry, type ProductEntry } from '@/lib/ardisMsClient'
@@ -569,6 +569,9 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
   const [editedRaw, setEditedRaw] = useState<string | null>(null)
   const [pendingBundle, setPendingBundle] = useState<ViewModelBundle | null>(null)
   const [publishConfirmed, setPublishConfirmed] = useState(false)
+  // Set after publishing a credential schema, to prompt for the product half.
+  const [awaitingProduct, setAwaitingProduct] = useState<
+    { verifierId: string; credentialType: string; version: string } | null>(null)
   // What happened to the credential schema half of a publish: published, or
   // already published and unchanged. Surfaced so a product-only update does not
   // look like it silently skipped the schema.
@@ -619,6 +622,29 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
     }
     return acc
   }, {})
+
+  // Products that render with a given credential schema, keyed
+  // verifier_id/credential_type.
+  //
+  // This is a many-to-one relation and the list has to treat it as one: since the
+  // product and credential schema became separate files, ardis/license/v2 is used
+  // by both license-verification and provider-background-check. The list used to
+  // read productIndex — keyed by SKU — with a credential_type key, so it matched
+  // only when a product's sku happened to equal its credential type and otherwise
+  // showed "No Stripe product" for a product that existed.
+  const productsByType = products.reduce<Record<string, ProductEntry[]>>((acc, p) => {
+    if (!p.verifier_id || !p.credential_type) return acc
+    const key = `${p.verifier_id}/${p.credential_type}`
+    ;(acc[key] ??= []).push(p)
+    return acc
+  }, {})
+
+  // Products naming a credential_type that has no published schema. They would
+  // otherwise be invisible here — the list is grouped by schema, so a product
+  // without one has no group to appear under.
+  const publishedTypes = new Set(schemas.map(s => `${s.verifier_id}/${s.credential_type}`))
+  const orphanProducts = products.filter(p =>
+    p.verifier_id && !publishedTypes.has(`${p.verifier_id}/${p.credential_type ?? ''}`))
 
   const publishMutation = useMutation({
     mutationFn: async (b: ViewModelBundle) => {
@@ -738,13 +764,30 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
         : kind === 'product'         ? 'Product published to Stripe'
         : schemaOutcome              ? `Product published. ${schemaOutcome}`
         :                              'Product and credential schema published')
+
+      // A published schema is half a pair. Hold the panel open and say what is
+      // still missing, instead of clearing the screen and leaving the operator to
+      // remember that a schema alone sells nothing.
+      if (kind === 'credential-schema' && effectiveBundle) {
+        setAwaitingProduct({
+          verifierId:     effectiveBundle.verifier_id as string,
+          credentialType: effectiveBundle.credential_type as string,
+          version:        (effectiveBundle.version as string) || 'v1',
+        })
+        resetImport(true)
+        return
+      }
+      setAwaitingProduct(null)
       resetImport()
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Publish failed'),
   })
 
-  const resetImport = () => {
-    setShowImport(false)
+  // keepOpen leaves the import panel up for the second half of a pair. Closing it
+  // after publishing a credential schema hid the fact that a product still had to
+  // be uploaded, and the two files are almost always uploaded back to back.
+  const resetImport = (keepOpen = false) => {
+    setShowImport(keepOpen)
     setFileRaw(null)
     setEditedRaw(null)
     setPendingBundle(null)
@@ -888,7 +931,11 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
   // Use productIndex to check it when filtering schemas.
   const schemaProductRole = (s: typeof schemas[0]) => {
     const key = `${s.verifier_id}/${s.credential_type}`
-    return (productIndex[key] as any)?.product_role ?? ''
+    // Any product on this schema being the platform gate makes the schema
+    // platform-scoped; in practice the gate is the only product on its type.
+    return (productsByType[key] ?? []).some(p => (p as any).product_role === 'platform')
+      ? 'platform'
+      : ''
   }
 
   const visibleSchemas = isPlatformMode
@@ -903,6 +950,43 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
     acc[key].push(s)
     return acc
   }, {})
+
+  // Whether the file on screen has its other half already published, answered
+  // before the publish rather than by a server error after it. The schema list is
+  // loaded anyway, so this costs nothing and is the difference between "publish
+  // and find out" and knowing what will happen.
+  //
+  // Deliberately advisory, not a gate: the server decides, and this can be stale
+  // if someone else published a second ago.
+  const pairing = (() => {
+    if (!effectiveBundle) return null
+    const kind = kindOf(effectiveBundle)
+    const verifierId = effectiveBundle.verifier_id as string
+    const credentialType = effectiveBundle.credential_type as string
+    const key = `${verifierId}/${credentialType}`
+
+    if (kind === 'product') {
+      const liveVersions = (grouped[key] ?? []).map(s => s.version)
+      return liveVersions.length > 0
+        ? { ok: true, text: `Renders with ${key} — published (${liveVersions.join(', ')}).` }
+        : { ok: false, text: `No credential schema published for ${key}. Publish that file first, or this will be refused.` }
+    }
+
+    if (kind === 'credential-schema') {
+      const version = (effectiveBundle.version as string) || 'v1'
+      if ((grouped[key] ?? []).some(s => s.version === version)) {
+        return { ok: false, text: `${key}/${version} is already published. If your file differs, bump x-version to ${nextVersion(version)}.` }
+      }
+      const users = productsByType[key] ?? []
+      return {
+        ok: true,
+        text: users.length > 0
+          ? `Used by ${users.length} existing product${users.length === 1 ? '' : 's'}: ${users.map(p => p.name).join(', ')}.`
+          : 'New credential type. Upload its product file next to make it orderable.',
+      }
+    }
+    return null
+  })()
 
   return (
     <>
@@ -952,6 +1036,34 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
               </p>
             </CardHeader>
             <CardContent className="space-y-6">
+
+              {/* Carried over from the schema that was just published: a schema on
+                  its own is not orderable, and this is the moment that fact is
+                  actionable. */}
+              {awaitingProduct && !fileRaw && (
+                <div className="flex items-start justify-between gap-4 p-3 rounded-lg border border-emerald-500/25 bg-emerald-500/5">
+                  <div className="flex items-start gap-2 min-w-0">
+                    <CheckCircle2 size={14} className="text-emerald-500 mt-0.5 shrink-0" />
+                    <div className="space-y-0.5 min-w-0">
+                      <p className="text-xs font-semibold text-emerald-600">
+                        Published {awaitingProduct.verifierId}/{awaitingProduct.credentialType}/{awaitingProduct.version}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Nothing sells it yet. Drop the product file whose{' '}
+                        <span className="font-mono">x-credential-type</span> is{' '}
+                        <span className="font-mono">{awaitingProduct.credentialType}</span> to make it orderable.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAwaitingProduct(null)}
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                  >
+                    Later
+                  </button>
+                </div>
+              )}
 
               {/* Step 1 — Upload */}
               <div className="space-y-2">
@@ -1004,6 +1116,19 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                       </span>
                     )}
                   </div>
+
+                  {/* Where this file sits relative to what is already published,
+                      before publishing rather than after it fails. */}
+                  {pairing && (
+                    <div className={`flex items-start gap-2 p-3 rounded-lg border text-xs ${pairing.ok
+                      ? 'border-emerald-500/25 bg-emerald-500/5 text-emerald-600'
+                      : 'border-amber-500/25 bg-amber-500/5 text-amber-600'}`}>
+                      {pairing.ok
+                        ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+                        : <AlertCircle size={14} className="mt-0.5 shrink-0" />}
+                      <span>{pairing.text}</span>
+                    </div>
+                  )}
 
                   {/* Summary */}
                   <div className="grid grid-cols-4 gap-3 p-3 bg-muted/20 rounded-lg border border-border text-xs">
@@ -1166,7 +1291,15 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
               <Database size={14} />
               {isLoading
                 ? 'Loading…'
-                : `${Object.keys(grouped).length} product${Object.keys(grouped).length !== 1 ? 's' : ''} · ${schemas.length} schema version${schemas.length !== 1 ? 's' : ''}`}
+                // Was counting credential types and calling them products, which
+                // read as a product count and was wrong in both directions once a
+                // schema could serve several.
+                : [
+                    `${products.length} product${products.length === 1 ? '' : 's'}`,
+                    `${Object.keys(grouped).length} credential type${Object.keys(grouped).length === 1 ? '' : 's'}`,
+                    `${schemas.length} schema version${schemas.length === 1 ? '' : 's'}`,
+                    ...(orphanProducts.length > 0 ? [`${orphanProducts.length} without a schema`] : []),
+                  ].join(' · ')}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
@@ -1178,8 +1311,10 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
             )}
             {(() => {
               const entries = Object.entries(grouped)
-              const platformEntries = entries.filter(([key]) => (productIndex[key] as any)?.product_role === 'platform')
-              const vendorEntries   = entries.filter(([key]) => (productIndex[key] as any)?.product_role !== 'platform')
+              const isPlatformKey = (key: string) =>
+                (productsByType[key] ?? []).some(p => (p as any).product_role === 'platform')
+              const platformEntries = entries.filter(([key]) => isPlatformKey(key))
+              const vendorEntries   = entries.filter(([key]) => !isPlatformKey(key))
               const renderGroup = ([key, versions]: [string, typeof schemas]) => {
                 const [verifierId, credentialType] = key.split('/')
                 return (
@@ -1188,8 +1323,8 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                     verifierId={verifierId}
                     credentialType={credentialType}
                     versions={[...versions].sort((a, b) => b.version.localeCompare(a.version))}
-                    product={productIndex[key]}
-                    isPlatform={(productIndex[key] as any)?.product_role === 'platform'}
+                    products={productsByType[key] ?? []}
+                    isPlatform={isPlatformKey(key)}
                     onArchive={(id) => {
                       productsApi.delete(id).then(() => {
                         queryClient.invalidateQueries({ queryKey: ['products'] })
@@ -1223,6 +1358,36 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                         </div>
                       )}
                       {vendorEntries.map(renderGroup)}
+                    </>
+                  )}
+
+                  {/* Products naming a credential type with no published schema.
+                      The list is grouped by schema, so these had no group to
+                      appear under and were invisible — a product live in Stripe
+                      and sellable, with nothing to render what it returns. */}
+                  {orphanProducts.length > 0 && (
+                    <>
+                      <div className="px-6 py-2 border-y border-destructive/20 bg-destructive/5 flex items-center gap-2">
+                        <AlertCircle size={12} className="text-destructive shrink-0" />
+                        <span className="text-xs font-semibold text-destructive uppercase tracking-wide">No credential schema</span>
+                        <span className="text-xs text-muted-foreground">
+                          — live in Stripe, but nothing renders what they return
+                        </span>
+                      </div>
+                      {orphanProducts.map(p => (
+                        <div key={p.id ?? p.name} className="flex items-center justify-between gap-4 px-6 py-3 border-b border-border last:border-0">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className="font-mono text-sm font-medium shrink-0">{p.verifier_id}</span>
+                            <Badge variant="outline" className="text-xs font-mono shrink-0 border-destructive/40 text-destructive">
+                              {p.credential_type || 'no credential_type'}
+                            </Badge>
+                            <span className="text-sm truncate text-foreground/80">{p.name}</span>
+                          </div>
+                          <span className="text-xs text-muted-foreground shrink-0">
+                            publish {p.verifier_id}/{p.credential_type} to fix
+                          </span>
+                        </div>
+                      ))}
                     </>
                   )}
                 </>
@@ -1343,11 +1508,13 @@ function PricingMapper({ bundle }: { bundle: ViewModelBundle }) {
 
 // ── Registry group ────────────────────────────────────────────────────────────
 
-function SchemaGroup({ verifierId, credentialType, versions, product, isPlatform, onArchive, onDownload, onNewVersion }: {
+function SchemaGroup({ verifierId, credentialType, versions, products, isPlatform, onArchive, onDownload, onNewVersion }: {
   verifierId: string
   credentialType: string
   versions: SchemaIndexEntry[]
-  product?: ProductEntry
+  // Every product that renders with this schema. More than one is normal now that
+  // the halves are separate files: a free check and a paid check can share one.
+  products: ProductEntry[]
   isPlatform?: boolean
   onArchive?: (id: string) => void
   onDownload?: (verifierId: string, credentialType: string, version: string, name: string) => void
@@ -1365,7 +1532,7 @@ function SchemaGroup({ verifierId, credentialType, versions, product, isPlatform
   const handleNewVersion = () => setNewVersionConfirm(true)
   const confirmNewVersion = () => {
     setNewVersionConfirm(false)
-    onNewVersion?.(verifierId, credentialType, live.version, product?.name ?? credentialType)
+    onNewVersion?.(verifierId, credentialType, live.version, credentialType)
   }
 
   const handlePreview = async () => {
@@ -1384,44 +1551,70 @@ function SchemaGroup({ verifierId, credentialType, versions, product, isPlatform
   return (
     <div className="border-b border-border last:border-0">
 
-      {/* ── Header ── */}
+      {/* ── Header: the schema is the subject here, products hang off it ── */}
       <div className="flex items-center justify-between px-6 py-3">
         <div className="flex items-center gap-3 min-w-0">
           <span className="font-mono text-sm font-medium shrink-0">{verifierId}</span>
           <Badge variant="secondary" className="text-xs font-mono shrink-0">{credentialType}</Badge>
-          {product ? (
-            <>
-              <span className="text-sm truncate text-foreground/80">{product.name}</span>
-              {isPlatform && (
-                <Badge className="text-xs shrink-0 bg-amber-500/15 text-amber-600 border border-amber-500/40">
-                  Platform Gate
-                </Badge>
-              )}
-              <Badge
-                variant="outline"
-                className={`text-xs shrink-0 ${product.active !== false
-                  ? 'border-emerald-500/40 text-emerald-600'
-                  : 'border-destructive/40 text-destructive'}`}
-              >
-                {product.active !== false ? 'Active in Stripe' : 'Archived'}
-              </Badge>
-            </>
-          ) : (
-            <Badge variant="outline" className="text-xs shrink-0 border-amber-500/40 text-amber-600">
-              No Stripe product
+          {isPlatform && (
+            <Badge className="text-xs shrink-0 bg-amber-500/15 text-amber-600 border border-amber-500/40">
+              Platform Gate
             </Badge>
           )}
+          <span className="text-xs text-muted-foreground shrink-0">
+            {products.length === 0
+              ? 'no product uses this schema yet'
+              : `${products.length} product${products.length === 1 ? '' : 's'}`}
+          </span>
         </div>
-        {product?.id && onArchive && product.active !== false && (
-          <button
-            type="button"
-            onClick={() => onArchive(product.id!)}
-            className="text-xs text-muted-foreground hover:text-destructive transition-colors ml-4 shrink-0"
-          >
-            Archive
-          </button>
-        )}
       </div>
+
+      {/* ── Products rendering with this schema ──
+          Listed rather than collapsed into one name: a schema serving two
+          products is the normal case now, and archiving is per product. */}
+      {products.length > 0 && (
+        <div className="mx-6 mb-3 rounded-lg border border-border divide-y divide-border">
+          {products.map(p => (
+            <div key={p.id ?? p.sku ?? p.name} className="flex items-center justify-between gap-4 px-4 py-2">
+              <div className="flex items-center gap-3 min-w-0">
+                <Package size={12} className="text-muted-foreground shrink-0" />
+                <span className="text-sm truncate text-foreground/80">{p.name}</span>
+                {p.sku && (
+                  <span className="font-mono text-[11px] text-muted-foreground shrink-0">{p.sku}</span>
+                )}
+                <Badge
+                  variant="outline"
+                  className={`text-xs shrink-0 ${p.active !== false
+                    ? 'border-emerald-500/40 text-emerald-600'
+                    : 'border-destructive/40 text-destructive'}`}
+                >
+                  {p.active !== false ? 'Active in Stripe' : 'Archived'}
+                </Badge>
+              </div>
+              {p.id && onArchive && p.active !== false && (
+                <button
+                  type="button"
+                  onClick={() => onArchive(p.id!)}
+                  className="text-xs text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                >
+                  Archive
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* A schema nothing sells is not an error — it may be published ahead of
+          its product — but it should be visible rather than looking published
+          and in use. */}
+      {products.length === 0 && (
+        <div className="mx-6 mb-3 rounded-lg border border-amber-500/25 bg-amber-500/5 px-4 py-2">
+          <p className="text-xs text-amber-600">
+            Published, but no product renders with it. Upload the matching product file to make it orderable.
+          </p>
+        </div>
+      )}
 
       {/* ── Live version ── */}
       {live && (
@@ -1466,7 +1659,7 @@ function SchemaGroup({ verifierId, credentialType, versions, product, isPlatform
             {onDownload && (
               <button
                 type="button"
-                onClick={() => onDownload(verifierId, credentialType, live.version, product?.name ?? credentialType)}
+                onClick={() => onDownload(verifierId, credentialType, live.version, products[0]?.name ?? credentialType)}
                 className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
                 title="Download bundle file"
               >
@@ -1519,7 +1712,7 @@ function SchemaGroup({ verifierId, credentialType, versions, product, isPlatform
               schema={(previewSchema.data_schema as Record<string, unknown>) ?? {}}
               uiSchema={(previewSchema.ui_schema as Record<string, unknown>) ?? {}}
               data={(previewSchema.sample_data as Record<string, unknown>) ?? {}}
-              verifierName={product?.verifier_name as string}
+              verifierName={products[0]?.verifier_name as string}
               credentialType={credentialType}
             />
           </PreviewErrorBoundary>
