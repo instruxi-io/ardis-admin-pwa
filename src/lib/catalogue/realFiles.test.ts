@@ -13,7 +13,7 @@ const DIR = process.env.ARDIS_EXAMPLES ?? '../ardis-vp-tools/examples'
 
 describe('the shipped example files', () => {
   const files = existsSync(DIR)
-    ? readdirSync(DIR).filter(f => f.endsWith('.json'))
+    ? readdirSync(DIR).filter((f: string) => f.endsWith('.json'))
     : []
 
   it.skipIf(files.length === 0)('are present to check', () => {
