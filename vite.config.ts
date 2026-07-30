@@ -7,6 +7,21 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      // The manifest is kept: installability is real value for a vendor — an app
+      // window, an icon, no browser chrome — and it carries no risk.
+      //
+      // The service worker is not. It precached index.html and bound every
+      // navigation to that cached copy, so a deploy stayed invisible until the
+      // worker updated on a later visit. Three deploys today appeared to serve
+      // the previous build and I put it down to CDN caching; it was this. An
+      // admin tool has to reflect a publish immediately, and nobody edits a
+      // credential schema offline, so the caching bought nothing and cost
+      // trust in what was on screen.
+      //
+      // selfDestroying ships a worker that unregisters itself and clears the old
+      // caches, which is the only way to undo the ones already registered in
+      // browsers that have visited the site.
+      selfDestroying: true,
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
       manifest: {
@@ -22,11 +37,6 @@ export default defineConfig({
           { src: 'icon-192x192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icon-512x512.png', sizes: '512x512', type: 'image/png' },
         ],
-      },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api/],
       },
     }),
   ],
