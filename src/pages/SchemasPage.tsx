@@ -214,9 +214,6 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
   // Products naming a credential_type that has no published schema. They would
   // otherwise be invisible here — the list is grouped by schema, so a product
   // without one has no group to appear under.
-  const publishedTypes = new Set(schemas.map(s => `${s.verifier_id}/${s.credential_type}`))
-  const orphanProducts = products.filter(p =>
-    p.verifier_id && !publishedTypes.has(`${p.verifier_id}/${p.credential_type ?? ''}`))
 
   // Publishes one file. Extracted from the mutation so a single drop and a whole
   // queue run through identical code — a two-file product must not take a
@@ -539,6 +536,26 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
   const visibleSchemas = isPlatformMode
     ? schemas.filter(s => schemaProductRole(s) === 'platform')
     : schemas.filter(s => schemaProductRole(s) !== 'platform')
+
+  // Products scoped the same way the schemas are. The counts and the orphan list
+  // were computed from the unfiltered sets while the groups below were filtered,
+  // so the Platform Subscription page reported "0 credential types · 34 schema
+  // versions" — two numbers from two different populations — and listed a vendor1
+  // product as an orphan on a page that has nothing to do with vendors.
+  const visibleProducts = isPlatformMode
+    ? products.filter(p => p.product_role === 'platform')
+    : products.filter(p => p.product_role !== 'platform')
+
+  const visibleProductsByType = visibleProducts.reduce<Record<string, ProductEntry[]>>((acc, p) => {
+    if (!p.verifier_id || !p.credential_type) return acc
+    ;(acc[`${p.verifier_id}/${p.credential_type}`] ??= []).push(p)
+    return acc
+  }, {})
+
+  const publishedTypes = new Set(
+    visibleSchemas.map(s => `${s.verifier_id}/${s.credential_type}`))
+  const orphanProducts = visibleProducts.filter(p =>
+    p.verifier_id && !publishedTypes.has(`${p.verifier_id}/${p.credential_type ?? ''}`))
 
   const grouped = visibleSchemas.reduce<Record<string, typeof schemas>>((acc, s) => {
     const key = `${s.verifier_id}/${s.credential_type}`
@@ -1044,9 +1061,9 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                 // read as a product count and was wrong in both directions once a
                 // schema could serve several.
                 : [
-                    `${products.length} product${products.length === 1 ? '' : 's'}`,
+                    `${visibleProducts.length} product${visibleProducts.length === 1 ? '' : 's'}`,
                     `${Object.keys(grouped).length} credential type${Object.keys(grouped).length === 1 ? '' : 's'}`,
-                    `${schemas.length} schema version${schemas.length === 1 ? '' : 's'}`,
+                    `${visibleSchemas.length} schema version${visibleSchemas.length === 1 ? '' : 's'}`,
                     ...(orphanProducts.length > 0 ? [`${orphanProducts.length} without a schema`] : []),
                   ].join(' · ')}
             </CardTitle>
@@ -1058,7 +1075,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                 have, and two unlabelled buttons in a far corner — one of which
                 downloaded a template, the other of which opened the panel that
                 would have explained it. */}
-            {!isLoading && schemas.length === 0 && (
+            {!isLoading && visibleSchemas.length === 0 && (
               <div className="px-6 py-10 max-w-2xl mx-auto space-y-5">
                 <div className="space-y-2">
                   <h3 className="text-sm font-semibold">Nothing published yet</h3>
@@ -1111,7 +1128,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                     verifierId={verifierId}
                     credentialType={credentialType}
                     versions={[...versions].sort((a, b) => b.version.localeCompare(a.version))}
-                    products={productsByType[key] ?? []}
+                    products={visibleProductsByType[key] ?? []}
                     drift={driftByVersion}
                     isPlatform={isPlatformKey(key)}
                     onArchive={(id) => {
