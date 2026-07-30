@@ -18,10 +18,10 @@ interface Member {
 }
 
 export default function UsersPage() {
-  const { activeTenantId } = useAuth()
+  const { activeTenantId, ready } = useAuth()
   const [search, setSearch] = useState('')
 
-  const { data: members = [], isLoading } = useQuery<Member[]>({
+  const { data: members = [], isLoading, isError, error } = useQuery<Member[]>({
     queryKey: ['tenant-members-users', activeTenantId],
     queryFn: async () => {
       if (!activeTenantId) return []
@@ -35,7 +35,7 @@ export default function UsersPage() {
     refetchInterval: 60_000,
   })
 
-  const loading = isLoading
+  const loading = !ready || isLoading
 
   const filtered = members.filter(m => {
     if (!search) return true
@@ -77,7 +77,18 @@ export default function UsersPage() {
         </CardHeader>
         <CardContent className="p-0">
           {loading && <p className="text-sm text-muted-foreground text-center py-8">Loading…</p>}
-          {!loading && filtered.length === 0 && (
+          {isError && (
+            <div className="mx-6 my-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-1">
+              <p className="text-xs font-semibold text-destructive">Could not load from Enforcer</p>
+              <p className="text-xs text-muted-foreground">
+                {error instanceof Error ? error.message : 'Unknown error'}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Tenant {activeTenantId ?? 'not resolved'}
+              </p>
+            </div>
+          )}
+          {!loading && !isError && filtered.length === 0 && (
             <p className="text-sm text-muted-foreground text-center py-8">No professionals found.</p>
           )}
           {filtered.map(user => (

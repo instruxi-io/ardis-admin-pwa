@@ -13,7 +13,6 @@ import UserDetailPage from '@/pages/UserDetailPage'
 import GroupsPage from '@/pages/GroupsPage'
 import GroupDetailPage from '@/pages/GroupDetailPage'
 import SessionsPage from '@/pages/SessionsPage'
-import AuditLogPage from '@/pages/AuditLogPage'
 import TermsPage from '@/pages/TermsPage'
 import SchemasPage from '@/pages/SchemasPage'
 import VerifiersPage from '@/pages/VerifiersPage'
@@ -57,7 +56,6 @@ export default function App() {
                 <Route path="/groups" element={<GroupsPage />} />
                 <Route path="/groups/:id" element={<GroupDetailPage />} />
                 <Route path="/sessions" element={<SessionsPage />} />
-                <Route path="/audit" element={<AuditLogPage />} />
                 <Route path="/terms" element={<TermsPage />} />
                 <Route path="/schemas" element={<SchemasPage mode="vendor" />} />
                 <Route path="/platform" element={<SchemasPage mode="platform" />} />

@@ -47,9 +47,9 @@ export default function VerifiersPage() {
   const [showForm, setShowForm] = useState(false)
   const queryClient = useQueryClient()
 
-  const { activeTenantId } = useAuth()
+  const { activeTenantId, ready } = useAuth()
 
-  const { data: verifiers = [], isLoading } = useQuery<Verifier[]>({
+  const { data: verifiers = [], isLoading, isError, error } = useQuery<Verifier[]>({
     queryKey: ['tenant-members-verifiers', activeTenantId],
     queryFn: async () => {
       if (!activeTenantId) return []
@@ -60,9 +60,10 @@ export default function VerifiersPage() {
       return (res.data ?? []).filter(v => v.role?.toLowerCase() === 'developer')
     },
     refetchOnMount: true,
+    // Not retried into silence: if this fails the page must say so.
+    retry: 1,
   })
 
-  const isReady = true
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<OnboardValues>({
     resolver: zodResolver(onboardSchema),
@@ -273,12 +274,23 @@ export default function VerifiersPage() {
         <CardHeader className="py-4">
           <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
             <Shield size={14} />
-            {(!isReady || isLoading) ? 'Loading…' : `${verifiers.length} verifier${verifiers.length !== 1 ? 's' : ''}`}
+            {(!ready || isLoading) ? 'Loading…' : `${verifiers.length} verifier${verifiers.length !== 1 ? 's' : ''}`}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {(!isReady || isLoading) && <p className="text-sm text-muted-foreground text-center py-8">Loading…</p>}
-          {isReady && !isLoading && verifiers.length === 0 && (
+          {(!ready || isLoading) && <p className="text-sm text-muted-foreground text-center py-8">Loading…</p>}
+          {isError && (
+            <div className="mx-6 my-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-1">
+              <p className="text-xs font-semibold text-destructive">Could not load from Enforcer</p>
+              <p className="text-xs text-muted-foreground">
+                {error instanceof Error ? error.message : 'Unknown error'}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Tenant {activeTenantId ?? 'not resolved'}
+              </p>
+            </div>
+          )}
+          {ready && !isLoading && !isError && verifiers.length === 0 && (
             <p className="text-sm text-muted-foreground text-center py-8">
               No verifiers yet. Click "Onboard VP" to add the first one.
             </p>
