@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LogOut, Building2, Layers, Users, Shield, ScrollText, Crown } from 'lucide-react'
+import { LogOut, Building2, Layers, Users, Shield, Crown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
@@ -16,7 +16,6 @@ const vpNavItems = [
 const adminNavItems = [
   { to: '/users', icon: Users, label: 'Professionals' },
   { to: '/verifiers', icon: Shield, label: 'Verifiers' },
-  { to: '/audit', icon: ScrollText, label: 'Audit Log' },
 ]
 
 export function Sidebar() {
