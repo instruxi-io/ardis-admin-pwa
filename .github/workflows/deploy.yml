@@ -1,0 +1,47 @@
+name: Deploy
+
+# This repo had no pipeline: deploys were `npx wrangler pages deploy` from one
+# person's laptop, so nothing tied what was live to what was on master, and
+# nobody else could ship at all.
+#
+# Build-time values come from the GitHub Environment, not a committed file,
+# because Vite bakes VITE_* in at build time.
+# Settings -> Environments -> staging -> Variables.
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Test
+        run: npm test -- --run
+
+      - name: Build
+        run: npm run build
+        env:
+          VITE_ENFORCER_BASE_URL: ${{ vars.VITE_ENFORCER_BASE_URL }}
+          VITE_ARDIS_MS_URL: ${{ vars.VITE_ARDIS_MS_URL }}
+          VITE_APP_ENV: staging
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=credpass-admin-portal-dev
