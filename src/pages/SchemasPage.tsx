@@ -680,6 +680,33 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
     return null
   })()
 
+  // The phone preview, defined once and placed twice: sticky beside the flow
+  // on wide screens so selecting a file shows its render with no scrolling,
+  // inline in the flow on narrow ones.
+  const previewPane = bundle && effectiveBundle ? (
+    <div className="grid grid-cols-1 gap-6 py-6 px-4 bg-muted/20 rounded-xl border border-border justify-items-center">
+      {kindOf(effectiveBundle) !== 'credential-schema' && (
+        <PreviewErrorBoundary label="Order form">
+          <OrderFormPreview
+            schema={(effectiveBundle.order_schema as Record<string, unknown>) ?? {}}
+            uiSchema={(effectiveBundle.order_ui_schema as Record<string, unknown>) ?? {}}
+          />
+        </PreviewErrorBoundary>
+      )}
+      {kindOf(effectiveBundle) !== 'product' && (
+        <PreviewErrorBoundary label="Credential">
+          <CredentialPreview
+            schema={(effectiveBundle.data_schema as Record<string, unknown>) ?? {}}
+            uiSchema={(effectiveBundle.ui_schema as Record<string, unknown>) ?? {}}
+            data={(effectiveBundle.data as Record<string, unknown>) ?? {}}
+            verifierName={effectiveBundle.verifier_name as string}
+            credentialType={effectiveBundle.credential_type as string}
+          />
+        </PreviewErrorBoundary>
+      )}
+    </div>
+  ) : null
+
   return (
     <>
       <PublishConfirmModal
@@ -785,7 +812,12 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                 </p>
               </div>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent>
+            {/* Two columns on wide screens: the flow on the left, the phone
+                preview pinned on the right where the empty margin was, so
+                picking a file shows its render immediately. */}
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr),380px]">
+            <div className="space-y-6 min-w-0">
 
               {/* Carried over from the schema that was just published: a schema on
                   its own is not orderable, and this is the moment that fact is
@@ -954,7 +986,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
               {/* Step 2 — Preview (always visible as soon as bundle parses) */}
               {bundle && effectiveBundle && (
                 <div className="space-y-3">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Preview</p>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Summary</p>
 
                   {/* What this file publishes, stated before anything else: the
                       two halves have different rules, and a credential schema
@@ -1071,31 +1103,9 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                       )
                     })()}
 
-                  {/* Preview only the half this file actually carries. Rendering a
-                      credential pane for a product file previewed the order form
-                      as if it were the credential, which is exactly the confusion
-                      the split exists to remove. */}
-                  <div className={`grid ${kindOf(effectiveBundle) === 'bundle' ? 'grid-cols-2' : 'grid-cols-1'} gap-6 py-6 px-4 bg-muted/20 rounded-xl border border-border overflow-x-auto`}>
-                    {kindOf(effectiveBundle) !== 'credential-schema' && (
-                      <PreviewErrorBoundary label="Order form">
-                        <OrderFormPreview
-                          schema={(effectiveBundle.order_schema as Record<string, unknown>) ?? {}}
-                          uiSchema={(effectiveBundle.order_ui_schema as Record<string, unknown>) ?? {}}
-                        />
-                      </PreviewErrorBoundary>
-                    )}
-                    {kindOf(effectiveBundle) !== 'product' && (
-                      <PreviewErrorBoundary label="Credential">
-                        <CredentialPreview
-                          schema={(effectiveBundle.data_schema as Record<string, unknown>) ?? {}}
-                          uiSchema={(effectiveBundle.ui_schema as Record<string, unknown>) ?? {}}
-                          data={(effectiveBundle.data as Record<string, unknown>) ?? {}}
-                          verifierName={effectiveBundle.verifier_name as string}
-                          credentialType={effectiveBundle.credential_type as string}
-                        />
-                      </PreviewErrorBoundary>
-                    )}
-                  </div>
+                  {/* On narrow screens the preview stays inline here; on wide
+                      ones it lives in the sticky right column instead. */}
+                  <div className="lg:hidden">{previewPane}</div>
                 </div>
               )}
 
@@ -1209,6 +1219,20 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                 </div>
               )}
 
+            </div>
+
+            {/* The sticky live preview, in what used to be empty margin. */}
+            {previewPane && (
+              <div className="hidden lg:block">
+                <div className="sticky top-4 space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    Live preview · what the app shows
+                  </p>
+                  {previewPane}
+                </div>
+              </div>
+            )}
+            </div>
             </CardContent>
           </Card>
         )}
