@@ -13,7 +13,7 @@ type Step = 'email' | 'tenant-pick' | 'otp'
 type LoginMode = 'otp' | 'apikey'
 
 export default function LoginPage() {
-  const { ready, authenticated, claims, account } = useAuth()
+  const { ready, authenticated, role } = useAuth()
   const { sendOtp, verifyOtp, apiKeyLogin } = useAuth()
   const [mode, setMode] = useState<LoginMode>('otp')
   const [step, setStep] = useState<Step>('email')
@@ -27,7 +27,8 @@ export default function LoginPage() {
   if (!ready) return null
 
   if (authenticated) {
-    const role = claims?.role ?? account?.role
+    // Normalized context role, not raw claims/account.role: API-key logins
+    // carry role as an object and OTP claims use "tenant admin" with a space.
     const dest = role === 'admin' ? '/tenants' : '/schemas'
     return <Navigate to={dest} replace />
   }
@@ -96,14 +97,18 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+    <div
+      className="min-h-screen flex items-center justify-center bg-background px-4"
+      // A quiet gold glow from above; brand warmth without a hero image.
+      style={{ backgroundImage: 'radial-gradient(900px 480px at 50% -8%, hsl(44 54% 54% / 0.10), transparent 65%)' }}
+    >
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center space-y-1">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary text-primary-foreground text-xl font-bold mb-2">
-            A
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary text-primary-foreground text-xl font-bold mb-2 shadow-lg">
+            C
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight">Ardis Admin</h1>
-          <p className="text-sm text-muted-foreground">Platform administration portal</p>
+          <h1 className="text-2xl font-semibold tracking-tight">CredPass Admin</h1>
+          <p className="text-sm text-muted-foreground">Catalogue publishing and platform administration</p>
         </div>
 
         <Card>

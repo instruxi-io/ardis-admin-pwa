@@ -37,8 +37,13 @@ export function Sidebar() {
           <span className="text-sm font-semibold text-sidebar-foreground leading-tight truncate">
             CredPass Admin
           </span>
-          {activeTenantId && (
+          {/* The raw tenant UUID means nothing to a vendor; admins need it to
+              know which tenant they are operating on. */}
+          {isTenantAdmin && activeTenantId && (
             <span className="text-xs text-muted-foreground truncate">{activeTenantId}</span>
+          )}
+          {isDeveloper && (
+            <span className="text-xs text-muted-foreground truncate">Vendor portal</span>
           )}
         </div>
       </div>
@@ -147,9 +152,12 @@ export function Sidebar() {
           >
             {roleLabel}
           </Badge>
+          {/* username is the ACCOUNT name (e.g. ardis-vp); the publishing
+              verifier_id lives in group metadata and routinely differs, so
+              never label this verifier_id. */}
           {isDeveloper && username && (
             <p className="text-xs text-muted-foreground pt-0.5">
-              <span className="text-muted-foreground/60">verifier_id: </span>
+              <span className="text-muted-foreground/60">account: </span>
               <span className="font-mono">{username}</span>
             </p>
           )}

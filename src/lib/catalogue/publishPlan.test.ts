@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { PUBLISH_ORDER, deepEqual, isConflict, nextVersion, skuFor } from './publishPlan'
+import { PUBLISH_ORDER, compareVersionsDesc, deepEqual, isConflict, nextVersion, skuFor } from './publishPlan'
 
 describe('PUBLISH_ORDER', () => {
   // The server refuses a product whose credential type has no published schema,
@@ -54,6 +54,16 @@ describe('nextVersion', () => {
     expect(nextVersion('latest')).toBe('v2')
     expect(nextVersion('')).toBe('v2')
     expect(nextVersion('1.0')).toBe('v2')
+  })
+})
+
+describe('compareVersionsDesc', () => {
+  it('sorts numerically, so v10 outranks v9 as the live version', () => {
+    expect(['v9', 'v10', 'v1'].sort(compareVersionsDesc)).toEqual(['v10', 'v9', 'v1'])
+  })
+
+  it('falls back to reverse lexical for unparseable versions', () => {
+    expect(['alpha', 'beta'].sort(compareVersionsDesc)).toEqual(['beta', 'alpha'])
   })
 })
 

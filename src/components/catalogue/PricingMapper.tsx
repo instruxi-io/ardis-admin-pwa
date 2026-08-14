@@ -8,6 +8,19 @@
 import type { ViewModelBundle } from '@/lib/catalogue/bundleFormat'
 import type { XPricingConfig } from '@/lib/catalogue/pricing'
 import { money } from '@/lib/catalogue/pricing'
+import { InfoDot } from '@/components/ui/tooltip'
+
+const PricingLabel = () => (
+  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+    Pricing
+    <InfoDot title="Stripe pricing">
+      Created in Stripe automatically on publish from the amounts in the file:
+      nothing to configure in Stripe itself. Stripe prices are immutable, so
+      changing an amount archives the old price and creates a new one; past
+      orders keep what they paid.
+    </InfoDot>
+  </p>
+)
 
 export function PricingMapper({ bundle }: { bundle: ViewModelBundle }) {
   const rawXPricing = (bundle['x-pricing'] ?? bundle['x_pricing']) as XPricingConfig | undefined
@@ -21,7 +34,7 @@ export function PricingMapper({ bundle }: { bundle: ViewModelBundle }) {
   if (!hasTiers) {
     return (
       <div className="space-y-2">
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Pricing</p>
+        <PricingLabel />
         {oneTime > 0 ? (
           <div className="flex items-center gap-3 p-3 rounded-lg border border-border bg-muted/20">
             <span className="text-sm font-semibold">{money(oneTime, oneTimeCurrency)}</span>
@@ -50,13 +63,11 @@ export function PricingMapper({ bundle }: { bundle: ViewModelBundle }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">4 — Stripe Pricing</p>
+        {/* Same label both branches; the old "4 — Stripe Pricing" numbered a
+            step the flat branch never numbered. */}
+        <PricingLabel />
         <span className="text-xs text-emerald-500 font-medium">Prices created automatically on publish</span>
       </div>
-      <p className="text-xs text-muted-foreground">
-        Stripe prices are created automatically from the amounts in the bundle.
-        No manual configuration needed.
-      </p>
 
       {rawXPricing.options && rawXPricing.options.length > 0 && (
         <div className="space-y-2">

@@ -60,6 +60,16 @@ export function nextVersion(v: string): string {
   return m ? `v${Number(m[1]) + 1}` : 'v2'
 }
 
+// Newest version first. Numeric on the digits, because localeCompare puts v9
+// after v10 and the registry calls versions[0] the live one, so the lexical
+// sort would have promoted the wrong schema the day anyone reached v10.
+export function compareVersionsDesc(a: string, b: string): number {
+  const na = /^v(\d+)$/.exec(a)
+  const nb = /^v(\d+)$/.exec(b)
+  if (na && nb) return Number(nb[1]) - Number(na[1])
+  return b.localeCompare(a)
+}
+
 // Mirrors ardis-ms slugify(): the server derives a sku from the product name when
 // the bundle omits x-sku. Reproduced here so the product index finds an existing
 // product whether or not its bundle declared one.

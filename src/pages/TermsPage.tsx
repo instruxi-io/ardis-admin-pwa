@@ -130,7 +130,12 @@ export default function TermsPage() {
                   variant="ghost"
                   size="sm"
                   className="text-muted-foreground hover:text-destructive"
-                  onClick={() => deleteMutation.mutate(term.id)}
+                  onClick={() => {
+                    // A legal document deleted on a stray click is a bad day.
+                    if (window.confirm(`Delete ${term.type.replace(/_/g, ' ')} v${term.version}? This cannot be undone.`)) {
+                      deleteMutation.mutate(term.id)
+                    }
+                  }}
                   disabled={deleteMutation.isPending}
                 >
                   <Trash2 size={14} />

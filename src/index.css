@@ -2,60 +2,63 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Ardis brand: deep navy with the app's gold (#C9A84C = hsl(44 54% 54%)).
+   Light mode leads with navy (gold-on-white fails contrast for CTAs); dark
+   mode leads with gold on navy, which is exactly how the mobile app reads. */
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 174 30% 10%;
+    --background: 220 25% 98.5%;
+    --foreground: 222 47% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 174 30% 10%;
+    --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 174 30% 10%;
-    --primary: 174 83% 24%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 174 20% 94%;
-    --secondary-foreground: 174 30% 15%;
-    --muted: 174 10% 95%;
-    --muted-foreground: 174 10% 45%;
-    --accent: 174 20% 92%;
-    --accent-foreground: 174 30% 15%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 222 47% 22%;
+    --primary-foreground: 44 40% 96%;
+    --secondary: 220 20% 93%;
+    --secondary-foreground: 222 40% 16%;
+    --muted: 220 16% 94%;
+    --muted-foreground: 221 12% 44%;
+    --accent: 44 54% 92%;
+    --accent-foreground: 222 47% 16%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
-    --border: 174 15% 88%;
-    --input: 174 15% 88%;
-    --ring: 174 83% 24%;
+    --border: 220 14% 88%;
+    --input: 220 14% 88%;
+    --ring: 44 54% 48%;
     --radius: 0.5rem;
-    --sidebar: 174 25% 97%;
-    --sidebar-foreground: 174 30% 20%;
-    --sidebar-border: 174 15% 90%;
-    --sidebar-accent: 174 20% 92%;
-    --sidebar-accent-foreground: 174 83% 24%;
+    --sidebar: 220 25% 97%;
+    --sidebar-foreground: 222 30% 20%;
+    --sidebar-border: 220 16% 90%;
+    --sidebar-accent: 44 50% 90%;
+    --sidebar-accent-foreground: 222 47% 20%;
   }
 
   .dark {
-    --background: 174 25% 7%;
-    --foreground: 174 10% 95%;
-    --card: 174 25% 9%;
-    --card-foreground: 174 10% 95%;
-    --popover: 174 25% 9%;
-    --popover-foreground: 174 10% 95%;
-    --primary: 174 60% 40%;
-    --primary-foreground: 174 25% 7%;
-    --secondary: 174 20% 15%;
-    --secondary-foreground: 174 10% 85%;
-    --muted: 174 20% 14%;
-    --muted-foreground: 174 10% 55%;
-    --accent: 174 20% 16%;
-    --accent-foreground: 174 10% 85%;
-    --destructive: 0 62% 50%;
+    --background: 222 40% 8%;
+    --foreground: 220 15% 92%;
+    --card: 222 36% 10%;
+    --card-foreground: 220 15% 92%;
+    --popover: 222 36% 10%;
+    --popover-foreground: 220 15% 92%;
+    --primary: 44 54% 54%;
+    --primary-foreground: 222 47% 10%;
+    --secondary: 222 25% 16%;
+    --secondary-foreground: 220 12% 85%;
+    --muted: 222 25% 14%;
+    --muted-foreground: 220 10% 58%;
+    --accent: 222 25% 17%;
+    --accent-foreground: 220 12% 88%;
+    --destructive: 0 62% 52%;
     --destructive-foreground: 0 0% 98%;
-    --border: 174 20% 18%;
-    --input: 174 20% 18%;
-    --ring: 174 60% 40%;
-    --sidebar: 174 25% 6%;
-    --sidebar-foreground: 174 10% 85%;
-    --sidebar-border: 174 20% 14%;
-    --sidebar-accent: 174 20% 12%;
-    --sidebar-accent-foreground: 174 60% 40%;
+    --border: 222 24% 18%;
+    --input: 222 24% 18%;
+    --ring: 44 54% 54%;
+    --sidebar: 222 44% 6.5%;
+    --sidebar-foreground: 220 12% 85%;
+    --sidebar-border: 222 26% 14%;
+    --sidebar-accent: 222 30% 14%;
+    --sidebar-accent-foreground: 44 54% 60%;
   }
 }
 

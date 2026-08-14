@@ -13,14 +13,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { PublishConfirmModal } from '@/components/ui/publish-confirm-modal'
+import { InfoDot } from '@/components/ui/tooltip'
 import { env } from '@/config/env'
+import { GuidePanel } from '@/components/catalogue/GuidePanel'
 import { PreviewErrorBoundary, SchemaGroup } from '@/components/catalogue/SchemaGroup'
 import { PricingMapper } from '@/components/catalogue/PricingMapper'
 import { ValidationPanel } from '@/components/catalogue/ValidationPanel'
 import { DropZone } from '@/components/catalogue/DropZone'
 import { validateBundle } from '@/lib/catalogue/bundleValidation'
 import {
-  PUBLISH_ORDER, isConflict, deepEqual, nextVersion, skuFor,
+  PUBLISH_ORDER, compareVersionsDesc, isConflict, deepEqual, nextVersion, skuFor,
   type DroppedFile, type PublishStep,
 } from '@/lib/catalogue/publishPlan'
 import {
@@ -195,6 +197,24 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
     return acc
   }, {})
 
+  // What publishing will do to each queued file, answered from the loaded
+  // registry before the click rather than by the server after it. "New" and
+  // "updates existing" are different levels of caution and deserve different
+  // badges.
+  const fateOf = (b: ViewModelBundle | null): { label: string; tone: 'new' | 'update' | 'dup' } | null => {
+    if (!b || !b.verifier_id || !b.credential_type) return null
+    if (kindOf(b) === 'credential-schema') {
+      const version = (b.version as string) || 'v1'
+      const published = schemas.filter(s =>
+        s.verifier_id === b.verifier_id && s.credential_type === b.credential_type)
+      if (published.some(s => s.version === version)) return { label: 'version exists', tone: 'dup' }
+      return { label: published.length > 0 ? 'new version' : 'new schema', tone: 'new' }
+    }
+    return productIndex[`${b.verifier_id}/${skuFor(b)}`]
+      ? { label: 'updates existing', tone: 'update' }
+      : { label: 'new product', tone: 'new' }
+  }
+
   // Products that render with a given credential schema, keyed
   // verifier_id/credential_type.
   //
@@ -359,19 +379,22 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
       const schemaCount  = kinds.filter(k => k === 'credential-schema').length
       const productCount = kinds.filter(k => k !== 'credential-schema').length
 
+      // Anything that published a product is orderable in the app right now,
+      // and saying so closes the "did it work?" loop where it opens: the app.
+      const liveNote = ' Live in the app catalogue now.'
       if (items.length > 1) {
         toast.success(`Published ${[
           schemaCount  ? `${schemaCount} credential schema${schemaCount === 1 ? '' : 's'}` : '',
           productCount ? `${productCount} product${productCount === 1 ? '' : 's'}` : '',
-        ].filter(Boolean).join(' and ')}`)
+        ].filter(Boolean).join(' and ')}.${productCount > 0 ? liveNote : ''}`)
       } else {
         // Single file: say which half changed. "Published" alone is ambiguous when
         // the schema was left alone because its version already exists.
         toast.success(
           kinds[0] === 'credential-schema' ? (schemaOutcome ?? 'Credential schema published')
-          : kinds[0] === 'product'         ? 'Product published to Stripe'
-          : schemaOutcome                  ? `Product published. ${schemaOutcome}`
-          :                                  'Product and credential schema published')
+          : kinds[0] === 'product'         ? `Product published.${liveNote}`
+          : schemaOutcome                  ? `Product published. ${schemaOutcome}${liveNote}`
+          :                                  `Product and credential schema published.${liveNote}`)
       }
 
       // A schema published with no product alongside it is half a pair. Hold the
@@ -479,7 +502,15 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
   const loadForNewVersion = async (verifierId: string, credentialType: string, version: string, name: string) => {
     try {
       const content = await schemasApi.get(verifierId, credentialType, version)
-      const product = productIndex[`${verifierId}/${credentialType}`]
+      // productIndex is keyed by sku, and a sku only sometimes equals the
+      // credential type — looking it up with the type silently dropped the
+      // product's pricing and role from the reconstructed bundle. What this
+      // wants is "a product rendering with this credential type", which is
+      // exactly what productsByType holds.
+      // ponytail: several products can share a schema; taking the first means
+      // the reconstruction carries that product's pricing. Upgrade path: a
+      // product picker when length > 1.
+      const product = (productsByType[`${verifierId}/${credentialType}`] ?? [])[0]
       // Reconstruct the full bundle JSON with all x- fields from the product
       const obj1: Record<string, unknown> = {
         '$id':             `${verifierId}/${credentialType}/${version}`,
@@ -658,6 +689,9 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
           </div>
         </div>
 
+        {/* The panel that answers the questions vendors otherwise email us. */}
+        {!isPlatformMode && <GuidePanel />}
+
         {/* Import flow */}
         {showImport && (
           <Card>
@@ -717,7 +751,16 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
 
               {/* Step 1 — Upload */}
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Files</p>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                  Files
+                  <InfoDot title="File format">
+                    Each file is three JSON objects stacked in one file: the schema
+                    (with its <span className="font-mono">x-</span> metadata), the UI
+                    schema (layout), and sample data (for the preview only). The first
+                    object's <span className="font-mono">x-publishes</span> says whether
+                    the file is a credential schema or a product.
+                  </InfoDot>
+                </p>
                 <DropZone count={files.length} onFiles={addFiles} />
 
                 {/* The batch, in the order it will be published. Schemas sort
@@ -754,6 +797,18 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                               {kind === 'credential-schema' ? 'schema' : kind === 'product' ? 'product' : 'bundle'}
                             </Badge>
                           )}
+                          {/* What this publish will DO, not just whether it can. */}
+                          {kind && !step && (() => {
+                            const fate = fateOf(q.bundle)
+                            return fate ? (
+                              <Badge variant="outline" className={`text-[10px] shrink-0 ${
+                                fate.tone === 'dup'    ? 'border-amber-500/40 text-amber-600' :
+                                fate.tone === 'update' ? 'border-sky-500/40 text-sky-600' :
+                                                         'border-emerald-500/40 text-emerald-600'}`}>
+                                {fate.label}
+                              </Badge>
+                            ) : null
+                          })()}
                           {step
                             ? <Badge variant="outline" className={`text-[10px] shrink-0 ${
                                 step.status === 'done'    ? 'border-emerald-500/40 text-emerald-600' :
@@ -839,7 +894,16 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                       two halves have different rules, and a credential schema
                       cannot be taken back once published. */}
                   <div className="flex items-center gap-2 p-3 bg-muted/20 rounded-lg border border-border text-xs">
-                    <span className="text-muted-foreground/60 uppercase text-[10px] tracking-wide">Publishes</span>
+                    <span className="text-muted-foreground/60 uppercase text-[10px] tracking-wide inline-flex items-center gap-1">
+                      Publishes
+                      <InfoDot title="x-publishes">
+                        Declared by the file itself in the first JSON object:{' '}
+                        <span className="font-mono">"x-publishes": "credential-schema"</span>{' '}
+                        or <span className="font-mono">"product"</span>. A file without it
+                        is read as the older combined format that publishes both halves at
+                        once.
+                      </InfoDot>
+                    </span>
                     <span className="font-mono font-semibold text-primary">{KIND_LABEL[kindOf(effectiveBundle)]}</span>
                     {kindOf(effectiveBundle) === 'bundle' && (
                       <span className="text-muted-foreground">
@@ -868,15 +932,40 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                       <p className="font-medium mt-0.5 truncate">{effectiveBundle.name as string}</p>
                     </div>
                     <div>
-                      <span className="text-muted-foreground/60 uppercase text-[10px] tracking-wide">Verifier ID</span>
+                      <span className="text-muted-foreground/60 uppercase text-[10px] tracking-wide inline-flex items-center gap-1">
+                        Verifier ID
+                        <InfoDot title="Verifier ID" side="bottom">
+                          Your publishing identity, from{' '}
+                          <span className="font-mono">x-verifier-id</span>. The server
+                          checks it against the verifier groups your account belongs to:
+                          a value you do not own is refused with a 403. It is not your
+                          account username.
+                        </InfoDot>
+                      </span>
                       <p className="font-mono mt-0.5 text-primary">{effectiveBundle.verifier_id as string}</p>
                     </div>
                     <div>
-                      <span className="text-muted-foreground/60 uppercase text-[10px] tracking-wide">Credential Type</span>
+                      <span className="text-muted-foreground/60 uppercase text-[10px] tracking-wide inline-flex items-center gap-1">
+                        Credential Type
+                        <InfoDot title="Credential type" side="bottom">
+                          The join key between the two halves: a product names a
+                          credential type, and the credential schema published under the
+                          same type is what renders the result. They must match exactly.
+                        </InfoDot>
+                      </span>
                       <p className="font-mono mt-0.5 text-primary">{effectiveBundle.credential_type as string}</p>
                     </div>
                     <div>
-                      <span className="text-muted-foreground/60 uppercase text-[10px] tracking-wide">Version</span>
+                      <span className="text-muted-foreground/60 uppercase text-[10px] tracking-wide inline-flex items-center gap-1">
+                        Version
+                        <InfoDot title="Versioning" side="bottom">
+                          Credential schemas are immutable per version: changing one means
+                          bumping <span className="font-mono">x-version</span>. The app
+                          always fetches the latest version, so a new version updates how
+                          already-issued credentials display without re-issuing them.
+                          Products carry no version and are edited in place.
+                        </InfoDot>
+                      </span>
                       <p className="font-mono mt-0.5 text-primary">
                         {kindOf(effectiveBundle) === 'product'
                           ? '— products are mutable'
@@ -947,7 +1036,15 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
               {/* Step 3 — Validate */}
               {bundle && validation && (
                 <div className="space-y-3">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Checks</p>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                    Checks
+                    <InfoDot title="Pre-publish checks">
+                      The same rules the server and the app renderer enforce, run here
+                      first: identity fields, schema compiles, sample data validates,
+                      pricing is complete, and nothing uses constructs the app cannot
+                      render. Passing here means publish will not bounce.
+                    </InfoDot>
+                  </p>
                   <ValidationPanel result={validation} />
                   {!validation.pass && (
                     <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
@@ -1055,6 +1152,13 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
           <CardHeader className="py-4">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <Database size={14} />
+              <InfoDot title="Reading these numbers">
+                A credential type groups everything below it: its schema versions (the
+                newest is what the app renders with) and the products sold against it.
+                Several products can share one credential type. "Without a schema" means
+                a product is live in Stripe but nothing renders what it returns, which
+                needs fixing.
+              </InfoDot>
               {isLoading
                 ? 'Loading…'
                 // Was counting credential types and calling them products, which
@@ -1127,7 +1231,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                     key={key}
                     verifierId={verifierId}
                     credentialType={credentialType}
-                    versions={[...versions].sort((a, b) => b.version.localeCompare(a.version))}
+                    versions={[...versions].sort((a, b) => compareVersionsDesc(a.version, b.version))}
                     products={visibleProductsByType[key] ?? []}
                     drift={driftByVersion}
                     isPlatform={isPlatformKey(key)}

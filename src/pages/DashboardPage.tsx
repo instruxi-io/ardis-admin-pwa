@@ -33,13 +33,6 @@ export default function DashboardPage() {
     refetchInterval: 60_000,
   })
 
-  const activeUsersQuery = useQuery({
-    queryKey: ['admin', 'users', 'active', activeTenantId],
-    queryFn: () =>
-      getEnforcerApiClient().get<PaginatedResponse<UserListItem>>('admin/users', { limit: 1 }),
-    refetchInterval: 60_000,
-  })
-
   const sessionsQuery = useQuery({
     queryKey: ['admin', 'sessions', 'recent', activeTenantId],
     queryFn: () =>
@@ -122,7 +115,7 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      {activeUsersQuery.isLoading === false && usersQuery.isLoading === false && (
+      {usersQuery.isLoading === false && (
         <p className="text-xs text-muted-foreground text-right">
           Tenant: {activeTenantId ?? 'unknown'} · Auto-refreshes every 30s
         </p>
