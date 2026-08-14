@@ -535,7 +535,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
     try {
       const content = await schemasApi.get(verifierId, credentialType, version)
       // productIndex is keyed by sku, and a sku only sometimes equals the
-      // credential type — looking it up with the type silently dropped the
+      // credential type, so looking it up with the type silently dropped the
       // product's pricing and role from the reconstructed bundle. What this
       // wants is "a product rendering with this credential type", which is
       // exactly what productsByType holds.

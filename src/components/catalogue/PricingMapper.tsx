@@ -63,8 +63,8 @@ export function PricingMapper({ bundle }: { bundle: ViewModelBundle }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        {/* Same label both branches; the old "4 — Stripe Pricing" numbered a
-            step the flat branch never numbered. */}
+        {/* Same label both branches; the old tiered heading numbered a step
+            the flat branch never numbered. */}
         <PricingLabel />
         <span className="text-xs text-emerald-500 font-medium">Prices created automatically on publish</span>
       </div>

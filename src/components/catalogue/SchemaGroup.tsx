@@ -37,6 +37,80 @@ export class PreviewErrorBoundary extends Component<
   }
 }
 
+// One calm sentence by default; the field-level detail lives behind Details.
+// The vendor needs to know THAT display can be improved and how to fix it,
+// not to be met with a wall of field paths (which stays one click away for
+// whoever wants to act on it).
+function DriftNotice({ d }: { d: SchemaDriftRecord }) {
+  const [open, setOpen] = useState(false)
+  const never = d.unused_fields.length
+  const extra = d.undeclared_fields.length
+  const summary = [
+    never ? `${never} promised field${never === 1 ? '' : 's'} never arrive${never === 1 ? 's' : ''} in real results` : '',
+    extra ? `${extra} arriving field${extra === 1 ? '' : 's'} ${extra === 1 ? 'is' : 'are'} not described yet` : '',
+  ].filter(Boolean).join(' and ')
+
+  return (
+    <div className="mx-6 mb-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 space-y-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <AlertCircle size={13} className="text-amber-500 shrink-0" />
+        <span className="text-xs font-semibold text-amber-600">
+          This credential's display can be improved
+        </span>
+        <span className="text-[11px] text-muted-foreground flex-1">
+          {summary}. Only how cards display is affected.
+        </span>
+        <button
+          type="button"
+          onClick={() => setOpen(v => !v)}
+          className="text-[11px] text-amber-600 hover:text-amber-500 transition-colors shrink-0 inline-flex items-center gap-1"
+        >
+          {open ? 'Hide details' : 'Details'}
+          <ChevronDown size={11} className={open ? 'rotate-180 transition-transform' : 'transition-transform'} />
+        </button>
+      </div>
+      {open && (
+        <>
+          <p className="text-[11px] text-muted-foreground">
+            Noticed {d.reports} {d.reports === 1 ? 'time' : 'times'}, most recently{' '}
+            {format(new Date(d.last_seen), 'MMM d, HH:mm')}. Only field names are compared,
+            never the data inside a credential.
+          </p>
+          {d.unused_fields.length > 0 && (
+            <div>
+              <p className="text-[11px] text-muted-foreground mb-1">
+                Declared in the schema but never arrives, or always empty:
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {d.unused_fields.map(f => (
+                  <span key={f} className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{f}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          {d.undeclared_fields.length > 0 && (
+            <div>
+              <p className="text-[11px] text-muted-foreground mb-1">
+                Arrives in results but not described, so cards guess the label from the field name:
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {d.undeclared_fields.map(f => (
+                  <span key={f} className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600">{f}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          <p className="text-[11px] text-muted-foreground">
+            To fix: use New Version on the row below, adjust the fields to match what you
+            really send, and publish. Cards already issued pick up the improved display
+            automatically.
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
+
 export function SchemaGroup({ verifierId, credentialType, versions, products, drift, isPlatform, onArchive, onDownload, onNewVersion, onStartProduct }: {
   verifierId: string
   credentialType: string
@@ -148,49 +222,7 @@ export function SchemaGroup({ verifierId, credentialType, versions, products, dr
         const d = drift?.[`${verifierId}/${credentialType}/${live.version}`]
           ?? drift?.[`${verifierId}/${credentialType}/latest`]
         if (!d) return null
-        return (
-          <div className="mx-6 mb-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 space-y-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              <AlertCircle size={13} className="text-amber-500 shrink-0" />
-              {/* Read by the vendor about their own schema, so "the vendor"
-                  meant them and read backwards. */}
-              <span className="text-xs font-semibold text-amber-600">
-                Live results do not match this schema
-              </span>
-              <span className="text-[11px] text-muted-foreground">
-                seen {d.reports} {d.reports === 1 ? 'time' : 'times'} · last {format(new Date(d.last_seen), 'MMM d, HH:mm')}
-              </span>
-            </div>
-            {d.undeclared_fields.length > 0 && (
-              <div>
-                <p className="text-[11px] text-muted-foreground mb-1">
-                  Sent but not declared — these render with labels derived from the field name:
-                </p>
-                <div className="flex flex-wrap gap-1">
-                  {d.undeclared_fields.map(f => (
-                    <span key={f} className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600">{f}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {d.unused_fields.length > 0 && (
-              <div>
-                <p className="text-[11px] text-muted-foreground mb-1">
-                  Declared but never arrives, or always empty:
-                </p>
-                <div className="flex flex-wrap gap-1">
-                  {d.unused_fields.map(f => (
-                    <span key={f} className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{f}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-            <p className="text-[11px] text-muted-foreground">
-              Publish a new version declaring these to control how they appear. Field names only —
-              no credential data is collected.
-            </p>
-          </div>
-        )
+        return <DriftNotice d={d} />
       })()}
 
       {/* A schema nothing sells is not an error — it may be published ahead of
