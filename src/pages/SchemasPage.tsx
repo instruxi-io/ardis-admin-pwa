@@ -158,15 +158,20 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
   // explicit 403 rather than silently rewritten data.
   const effectiveBundle = bundle
 
-  const { data: schemas = [], isLoading: schemasLoading } = useQuery({
+  const { data: schemas = [], isLoading: schemasLoading, isError: schemasError, refetch: refetchSchemas } = useQuery({
     queryKey: ['schemas'],
     queryFn: schemasApi.list,
   })
 
-  const { data: products = [], isLoading: productsLoading } = useQuery({
+  const { data: products = [], isLoading: productsLoading, isError: productsError, refetch: refetchProducts } = useQuery({
     queryKey: ['products'],
     queryFn: productsApi.list,
   })
+
+  // A failed load must never impersonate an empty catalogue: the CORS outage
+  // rendered as "Nothing published yet", which reads as lost work.
+  const loadFailed = schemasError || productsError
+  const retryLoad = () => { refetchSchemas(); refetchProducts() }
 
   // Reported by the app when it renders a credential. Not gating anything, so a
   // failure here must not blank the page — an empty list reads as "no drift",
@@ -1161,6 +1166,8 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
               </InfoDot>
               {isLoading
                 ? 'Loading…'
+                : loadFailed
+                ? 'Could not load the catalogue'
                 // Was counting credential types and calling them products, which
                 // read as a product count and was wrong in both directions once a
                 // schema could serve several.
@@ -1174,12 +1181,24 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
           </CardHeader>
           <CardContent className="p-0">
             {isLoading && <p className="text-sm text-muted-foreground text-center py-8">Loading…</p>}
+            {!isLoading && loadFailed && (
+              <div className="px-6 py-10 max-w-md mx-auto text-center space-y-3">
+                <AlertCircle size={20} className="text-destructive mx-auto" />
+                <p className="text-sm font-semibold">The catalogue could not be loaded</p>
+                <p className="text-xs text-muted-foreground">
+                  Your published schemas and products are safe on the server; this
+                  screen just could not reach it. Check your connection and retry,
+                  and if it keeps failing, tell us what time it happened.
+                </p>
+                <Button size="sm" variant="outline" onClick={retryLoad}>Retry</Button>
+              </div>
+            )}
             {/* First run is when a vendor knows least, and it used to be the least
                 guided moment on the site: one sentence naming what they did not
                 have, and two unlabelled buttons in a far corner — one of which
                 downloaded a template, the other of which opened the panel that
                 would have explained it. */}
-            {!isLoading && visibleSchemas.length === 0 && (
+            {!isLoading && !loadFailed && visibleSchemas.length === 0 && (
               <div className="px-6 py-10 max-w-2xl mx-auto space-y-5">
                 <div className="space-y-2">
                   <h3 className="text-sm font-semibold">Nothing published yet</h3>
