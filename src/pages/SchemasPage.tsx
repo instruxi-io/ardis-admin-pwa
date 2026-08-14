@@ -8,6 +8,7 @@ import { OrderFormPreview, CredentialPreview } from '@/components/ui/schema-prev
 import { schemasApi, productsApi, type SchemaIndexEntry, type ProductEntry, type SchemaDriftRecord } from '@/lib/ardisMsClient'
 import { suggestGroups } from '@/lib/suggestGroups'
 import { exampleFiles } from '@/lib/catalogue/exampleFiles'
+import { starterProductFile } from '@/lib/catalogue/starterProduct'
 import { useAuth } from '@/context/AuthContext'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -73,6 +74,9 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
   // already published and unchanged. Surfaced so a product-only update does not
   // look like it silently skipped the schema.
   const [schemaOutcome, setSchemaOutcome] = useState<string | null>(null)
+  // Product names that just went live, for the moment that deserves more than
+  // a toast: the vendor's work is on a real phone right now and we can prove it.
+  const [justWentLive, setJustWentLive] = useState<string[] | null>(null)
 
   const IS_PROD = env.APP_ENV === 'production'
 
@@ -384,6 +388,12 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
       const schemaCount  = kinds.filter(k => k === 'credential-schema').length
       const productCount = kinds.filter(k => k !== 'credential-schema').length
 
+      if (productCount > 0) {
+        setJustWentLive(items
+          .filter(i => kindOf(i.bundle) !== 'credential-schema')
+          .map(i => (i.bundle.name as string) || i.file.name))
+      }
+
       // Anything that published a product is orderable in the app right now,
       // and saying so closes the "did it work?" loop where it opens: the app.
       const liveNote = ' Live in the app catalogue now.'
@@ -460,6 +470,23 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
   // put a value in the starter file that the server would reject with a 403.
   const ownVerifierId =
     schemas[0]?.verifier_id ?? products.find(p => p.verifier_id)?.verifier_id ?? ''
+
+  // A published schema nothing sells is a dead end; this turns its warning
+  // banner into the fix. Prefilled for that schema, so the vendor edits a
+  // title instead of learning a file format.
+  const startProductFor = (verifierId: string, credentialType: string) => {
+    const verifierName = products.find(p => p.verifier_id === verifierId && p.verifier_name)?.verifier_name
+    const starter = starterProductFile(verifierId, credentialType, verifierName)
+    setFiles([{ ...starter, edited: null }])
+    setSelectedId(starter.id)
+    setPublishLog([])
+    setPublishConfirmed(false)
+    setAwaitingProduct(null)
+    setShowImport(true)
+    // The page scrolls inside <main>, not the window.
+    document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' })
+    toast.success(`Started the ${credentialType} product file. Set the title and price, then publish.`)
+  }
 
   // Loads the worked example into the panel rather than downloading it: a new
   // vendor got a file on disk and an empty screen, when what they needed was to
@@ -696,6 +723,40 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
 
         {/* The panel that answers the questions vendors otherwise email us. */}
         {!isPlatformMode && <GuidePanel />}
+
+        {/* The go-live moment. Publishing to a live catalogue deserves proof,
+            not just a toast: the hosted phone shows their product for real. */}
+        {justWentLive && (
+          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4 animate-fade-in">
+            <div className="flex items-start gap-3">
+              <CheckCircle2 size={18} className="text-emerald-500 mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0 space-y-2">
+                <p className="text-sm font-semibold">
+                  {justWentLive.join(', ')} {justWentLive.length === 1 ? 'is' : 'are'} live in the app
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Professionals see it in the catalogue right now. Watch it yourself on
+                  the hosted test phone: open the catalogue tab and it is there, orderable,
+                  end to end.
+                </p>
+                <div className="flex items-center gap-3 pt-1">
+                  <Button size="sm" asChild>
+                    <a href="https://credpass-status.vercel.app/try.html" target="_blank" rel="noreferrer">
+                      See it on the test phone
+                    </a>
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setJustWentLive(null)}
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Import flow */}
         {showImport && (
@@ -1262,6 +1323,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                     }}
                     onDownload={downloadPublishedBundle}
                     onNewVersion={loadForNewVersion}
+                    onStartProduct={startProductFor}
                   />
                 )
               }

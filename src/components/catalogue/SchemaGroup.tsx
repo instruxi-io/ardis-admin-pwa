@@ -7,6 +7,7 @@ import type { ReactNode } from 'react'
 import type { ProductEntry, SchemaDriftRecord, SchemaIndexEntry } from '@/lib/ardisMsClient'
 import { AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Database, Eye, Package, Upload, XCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Component, useState } from 'react'
 import { CredentialPreview } from '@/components/ui/schema-preview'
 import { format } from 'date-fns'
@@ -36,7 +37,7 @@ export class PreviewErrorBoundary extends Component<
   }
 }
 
-export function SchemaGroup({ verifierId, credentialType, versions, products, drift, isPlatform, onArchive, onDownload, onNewVersion }: {
+export function SchemaGroup({ verifierId, credentialType, versions, products, drift, isPlatform, onArchive, onDownload, onNewVersion, onStartProduct }: {
   verifierId: string
   credentialType: string
   versions: SchemaIndexEntry[]
@@ -51,6 +52,7 @@ export function SchemaGroup({ verifierId, credentialType, versions, products, dr
   onArchive?: (id: string) => void
   onDownload?: (verifierId: string, credentialType: string, version: string, name: string) => void
   onNewVersion?: (verifierId: string, credentialType: string, version: string, name: string) => void
+  onStartProduct?: (verifierId: string, credentialType: string) => void
 }) {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -150,8 +152,10 @@ export function SchemaGroup({ verifierId, credentialType, versions, products, dr
           <div className="mx-6 mb-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 space-y-2">
             <div className="flex items-center gap-2 flex-wrap">
               <AlertCircle size={13} className="text-amber-500 shrink-0" />
+              {/* Read by the vendor about their own schema, so "the vendor"
+                  meant them and read backwards. */}
               <span className="text-xs font-semibold text-amber-600">
-                Does not match what the vendor sends
+                Live results do not match this schema
               </span>
               <span className="text-[11px] text-muted-foreground">
                 seen {d.reports} {d.reports === 1 ? 'time' : 'times'} · last {format(new Date(d.last_seen), 'MMM d, HH:mm')}
@@ -193,10 +197,20 @@ export function SchemaGroup({ verifierId, credentialType, versions, products, dr
           its product — but it should be visible rather than looking published
           and in use. */}
       {products.length === 0 && (
-        <div className="mx-6 mb-3 rounded-lg border border-amber-500/25 bg-amber-500/5 px-4 py-2">
+        <div className="mx-6 mb-3 rounded-lg border border-amber-500/25 bg-amber-500/5 px-4 py-2 flex items-center justify-between gap-4">
           <p className="text-xs text-amber-600">
-            Published, but no product renders with it. Upload the matching product file to make it orderable.
+            Published, but nothing sells it yet. One product file away from being orderable in the app.
           </p>
+          {onStartProduct && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0 border-amber-500/40 text-amber-600 hover:bg-amber-500/10"
+              onClick={() => onStartProduct(verifierId, credentialType)}
+            >
+              Start the product file
+            </Button>
+          )}
         </div>
       )}
 
