@@ -866,7 +866,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                     credential type has no schema — so the operator never has to
                     sequence the uploads themselves. */}
                 {files.length > 0 && (
-                  <div className="rounded-lg border border-border divide-y divide-border mt-2">
+                  <div className="rounded-lg border border-border divide-y divide-border mt-2 overflow-hidden">
                     {queue.map((q, i) => {
                       const step = publishLog.find(s => s.id === q.file.id)
                       const isSel = selected?.id === q.file.id
@@ -875,8 +875,12 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                         <div
                           key={q.file.id}
                           onClick={() => setSelectedId(q.file.id)}
-                          className={`flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors
-                            ${isSel ? 'bg-primary/5' : 'hover:bg-muted/30'}`}
+                          // The gold ring says "this is the one on screen"; the
+                          // hover ring says the rows are clickable at all.
+                          className={`flex items-center gap-3 px-3 py-2 cursor-pointer transition-all
+                            ${isSel
+                              ? 'bg-primary/5 ring-2 ring-inset ring-ring'
+                              : 'hover:bg-muted/30 hover:ring-1 hover:ring-inset hover:ring-ring/40'}`}
                         >
                           <span className="font-mono text-[11px] text-muted-foreground w-4 shrink-0">{i + 1}</span>
                           <div className="min-w-0 flex-1">
