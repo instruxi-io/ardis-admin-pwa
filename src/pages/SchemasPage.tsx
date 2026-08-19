@@ -503,6 +503,10 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
   const downloadPublishedBundle = async (verifierId: string, credentialType: string, version: string, name: string) => {
     try {
       const content = await schemasApi.get(verifierId, credentialType, version)
+      // ponytail: several products can share a schema; the first one only
+      // supplies a human description. Nothing else is taken from it, because a
+      // credential schema carries no pricing or order form.
+      const product = (productsByType[`${verifierId}/${credentialType}`] ?? [])[0]
       const bundle = [
         {
           "$id": `${verifierId}/${credentialType}/${version}`,
@@ -534,33 +538,34 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
   const loadForNewVersion = async (verifierId: string, credentialType: string, version: string, name: string) => {
     try {
       const content = await schemasApi.get(verifierId, credentialType, version)
-      // productIndex is keyed by sku, and a sku only sometimes equals the
-      // credential type, so looking it up with the type silently dropped the
-      // product's pricing and role from the reconstructed bundle. What this
-      // wants is "a product rendering with this credential type", which is
-      // exactly what productsByType holds.
-      // ponytail: several products can share a schema; taking the first means
-      // the reconstruction carries that product's pricing. Upgrade path: a
-      // product picker when length > 1.
+      // ponytail: several products can share a schema; the first one only
+      // supplies a human description. Nothing else is taken from it, because a
+      // credential schema carries no pricing or order form.
       const product = (productsByType[`${verifierId}/${credentialType}`] ?? [])[0]
-      // Reconstruct the full bundle JSON with all x- fields from the product
+      // Reconstruct a CREDENTIAL SCHEMA file, not a legacy combined bundle.
+      //
+      // This used to emit the schema twice: once as top-level `properties` and
+      // again under `x-data-schema`. Publishing reads x-data-schema (see
+      // bundleFormat), so an edit made in the obvious place, the top-level
+      // properties, was silently dropped and the "new version" came out
+      // byte-identical to the one before it. Reported by Dylan as the wrong
+      // version loading, which is what it looks like from the outside: you
+      // edit, publish, and nothing changed. ardis/license v3, v4 and v5 are all
+      // identical for exactly this reason.
+      //
+      // x-publishes: credential-schema means object 1 IS the schema, one place,
+      // so whatever is on screen is what gets published.
       const obj1: Record<string, unknown> = {
-        '$id':             `${verifierId}/${credentialType}/${version}`,
-        'title':           name,
-        'description':     product?.description ?? '',
-        'x-verifier-id':   verifierId,
-        'x-verifier-name': product?.verifier_name ?? verifierId,
+        ...(content.data_schema ?? {}),
+        '$id':               `${verifierId}/${credentialType}/${version}`,
+        'title':             name,
+        'x-publishes':       'credential-schema',
+        'x-verifier-id':     verifierId,
         'x-credential-type': credentialType,
-        'x-order-type':    product?.order_type ?? 'license',
-        'x-version':       version,
-        'type':            'object',
-        'properties':      content.data_schema?.['properties'] ?? {},
-        'x-data-schema':   content.data_schema ?? {},
-        'x-data-ui-schema': content.ui_schema ?? {},
+        'x-version':         version,
+        'type':              'object',
       }
-      if (product?.x_pricing) obj1['x-pricing'] = product.x_pricing
-      if (product?.price_one_time) obj1['x-price-one-time'] = product.price_one_time
-      if (product?.product_role) obj1['x-product-role'] = product.product_role
+      if (product?.description) obj1['description'] = product.description
 
       const bundle = [obj1, content.ui_schema ?? {}, {}]
       const text = bundle.map(o => JSON.stringify(o, null, 2)).join('\n')
