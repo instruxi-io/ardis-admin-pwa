@@ -317,6 +317,19 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
       // which is the whole reason the halves were separated.
       const publishProduct = async (pinSchemaVersion: boolean) => {
         const existingProduct = productIndex[`${verifierId}/${skuFor(b)}`]
+        // The server re-marshals the schema through a Go map, which sorts
+        // properties alphabetically. Every published product comes back that
+        // way; the app then renders fields in whatever order arrives unless
+        // ui:order pins it. So a product authored without ui:order previews
+        // here in the author's order and renders on the phone alphabetically,
+        // which is exactly the mismatch Dylan reported. Pin the author's order
+        // at publish time whenever they have not pinned one themselves.
+        const authoredUi = (b.order_ui_schema as Record<string, unknown>) ?? {}
+        const authoredProps = Object.keys(
+          ((b.order_schema as Record<string, unknown>)?.properties as Record<string, unknown>) ?? {})
+        const orderUiSchema = (!authoredUi['ui:order'] && authoredProps.length > 0)
+          ? { ...authoredUi, 'ui:order': authoredProps }
+          : authoredUi
         await productsApi.publish({
           stripe_product_id: existingProduct?.id,
           name:              b.name as string,
@@ -328,7 +341,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
           credential_type:   credentialType,
           active:            true,
           order_schema:      b.order_schema as Record<string, unknown>,
-          order_ui_schema:   (b.order_ui_schema as Record<string, unknown>) ?? {},
+          order_ui_schema:   orderUiSchema,
           ...(pinSchemaVersion ? {
             version,
             display_schema_path: `display-schemas/${verifierId}/${credentialType}/${version}/schema.json`,
