@@ -503,10 +503,6 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
   const downloadPublishedBundle = async (verifierId: string, credentialType: string, version: string, name: string) => {
     try {
       const content = await schemasApi.get(verifierId, credentialType, version)
-      // ponytail: several products can share a schema; the first one only
-      // supplies a human description. Nothing else is taken from it, because a
-      // credential schema carries no pricing or order form.
-      const product = (productsByType[`${verifierId}/${credentialType}`] ?? [])[0]
       const bundle = [
         {
           "$id": `${verifierId}/${credentialType}/${version}`,
