@@ -716,8 +716,23 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
   // The phone preview, defined once and placed twice: sticky beside the flow
   // on wide screens so selecting a file shows its render with no scrolling,
   // inline in the flow on narrow ones.
+  // Whether the file on screen has actually been published this session. The
+  // preview is convincing enough that a vendor read it as the result and walked
+  // away with nothing saved, so the pane now states its own status where the
+  // eye already is, and flips only on a confirmed publish.
+  const publishedThisSession = publishLog.length > 0 && publishLog.every(sd => sd.status === 'done')
   const previewPane = bundle && effectiveBundle ? (
     <div className="grid grid-cols-1 gap-6 py-6 px-4 bg-muted/20 rounded-xl border border-border justify-items-center">
+      {publishedThisSession ? (
+        <div className="w-full rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-2.5 text-center">
+          <span className="text-xs font-semibold tracking-wide text-emerald-500 uppercase">Published — this is now live in the app</span>
+        </div>
+      ) : (
+        <div className="w-full rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-center">
+          <span className="text-xs font-semibold tracking-wide text-amber-500 uppercase">Preview only — not published yet</span>
+          <p className="text-[11px] text-muted-foreground mt-0.5">The app will not change until you tick the review confirmation and press Publish below.</p>
+        </div>
+      )}
       {kindOf(effectiveBundle) !== 'credential-schema' && (
         <PreviewErrorBoundary label="Order form">
           <OrderFormPreview
