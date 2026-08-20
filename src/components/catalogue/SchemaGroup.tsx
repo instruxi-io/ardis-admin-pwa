@@ -111,7 +111,7 @@ function DriftNotice({ d }: { d: SchemaDriftRecord }) {
   )
 }
 
-export function SchemaGroup({ verifierId, credentialType, versions, products, drift, isPlatform, onArchive, onDownload, onNewVersion, onStartProduct }: {
+export function SchemaGroup({ verifierId, credentialType, versions, products, drift, isPlatform, onArchive, onDownload, onNewVersion, onStartProduct, onEditProduct }: {
   verifierId: string
   credentialType: string
   versions: SchemaIndexEntry[]
@@ -127,6 +127,9 @@ export function SchemaGroup({ verifierId, credentialType, versions, products, dr
   onDownload?: (verifierId: string, credentialType: string, version: string, name: string) => void
   onNewVersion?: (verifierId: string, credentialType: string, version: string, name: string) => void
   onStartProduct?: (verifierId: string, credentialType: string) => void
+  // Loads this product's order form into the editor. The order form is the
+  // product's, not the schema's, and this is the only button that edits it.
+  onEditProduct?: (product: ProductEntry) => void
 }) {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -199,6 +202,16 @@ export function SchemaGroup({ verifierId, credentialType, versions, products, dr
                   {p.active !== false ? 'Active in Stripe' : 'Archived'}
                 </Badge>
               </div>
+              {onEditProduct && (
+                <button
+                  type="button"
+                  onClick={() => onEditProduct(p)}
+                  className="text-xs text-muted-foreground hover:text-primary transition-colors shrink-0"
+                  title="Load this product's order form into the editor"
+                >
+                  Edit order form
+                </button>
+              )}
               {p.id && onArchive && p.active !== false && (
                 <button
                   type="button"

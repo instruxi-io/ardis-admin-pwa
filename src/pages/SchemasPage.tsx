@@ -5,6 +5,7 @@ import {
   Upload, CheckCircle2, AlertCircle, Database, FileJson
 } from 'lucide-react'
 import { OrderFormPreview, CredentialPreview } from '@/components/ui/schema-preview'
+import { productToFileText } from '@/lib/catalogue/productFile'
 import { schemasApi, productsApi, type SchemaIndexEntry, type ProductEntry, type SchemaDriftRecord } from '@/lib/ardisMsClient'
 import { suggestGroups } from '@/lib/suggestGroups'
 import { exampleFiles } from '@/lib/catalogue/exampleFiles'
@@ -511,6 +512,17 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
     setPublishLog([])
     setPublishConfirmed(false)
     setShowImport(true)
+  }
+
+  // The order form lives on the product, and until now nothing in the portal
+  // loaded a product back for editing: every button touched the credential
+  // schema. This is the missing half of that workflow.
+  const editProductFor = (product: ProductEntry) => {
+    setFiles([{ id: `edit-product-${product.sku ?? product.name}`, name: `${product.name} (edit)`, raw: productToFileText(product), edited: null }])
+    setSelectedId(null)
+    setPublishLog([])
+    setShowImport(true)
+    toast.success(`Loaded ${product.name} — edit the order form and publish to update it in place`)
   }
 
   const downloadPublishedBundle = async (verifierId: string, credentialType: string, version: string, name: string) => {
@@ -1365,6 +1377,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                     }}
                     onDownload={downloadPublishedBundle}
                     onNewVersion={loadForNewVersion}
+                    onEditProduct={editProductFor}
                     onStartProduct={startProductFor}
                   />
                 )
