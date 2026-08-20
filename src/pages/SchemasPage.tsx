@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -645,6 +645,13 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
     visibleSchemas.map(s => `${s.verifier_id}/${s.credential_type}`))
   const orphanProducts = visibleProducts.filter(p =>
     p.verifier_id && !publishedTypes.has(`${p.verifier_id}/${p.credential_type ?? ''}`))
+
+  // A tab with files in the editor must not be reloaded out from under the
+  // person editing them. useSelfUpdate reads this before auto-reloading.
+  useEffect(() => {
+    window.__ardisDirty = files.length > 0
+    return () => { window.__ardisDirty = false }
+  }, [files.length])
 
   const grouped = visibleSchemas.reduce<Record<string, typeof schemas>>((acc, s) => {
     const key = `${s.verifier_id}/${s.credential_type}`
