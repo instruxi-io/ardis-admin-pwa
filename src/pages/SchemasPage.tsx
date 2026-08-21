@@ -31,6 +31,7 @@ import {
   parseMultipleJsonObjects, parseBundle, kindOf, KIND_LABEL,
   type ViewModelBundle,
 } from '@/lib/catalogue/bundleFormat'
+import { pinAuthoredOrder } from '@/lib/catalogue/uiOrderInjection'
 
 // ── Bundle file format (Andy / standard JSON Forms convention) ────────────────
 //
@@ -271,7 +272,10 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
       // disagreeing). So on 409 we fetch what is published and compare.
       const desiredSchema = {
         data_schema: (b.data_schema as Record<string, unknown>),
-        ui_schema:   (b.ui_schema   as Record<string, unknown>) ?? {},
+        // Pinned for the same reason as the order form below: the credential
+        // card renders these fields through RJSF, and without a ui:order at
+        // each level the server hands them back alphabetised.
+        ui_schema:   pinAuthoredOrder(b.data_schema, b.ui_schema),
         sample_data: (b.data        as Record<string, unknown>) ?? undefined,
       }
 
@@ -288,9 +292,16 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
           if (!isConflict(err)) throw err
 
           const published = await schemasApi.get(verifierId, credentialType, version)
+          // Compare with the pin applied to BOTH sides: a version published
+          // before pinning existed differs from today's pinned ui_schema by
+          // the injected ui:order alone, and that difference is ours, not the
+          // author's — it must not demand a version bump from someone who
+          // changed nothing.
           const changed =
             !deepEqual(published.data_schema, desiredSchema.data_schema) ||
-            !deepEqual(published.ui_schema ?? {}, desiredSchema.ui_schema)
+            !deepEqual(
+              pinAuthoredOrder(published.data_schema, published.ui_schema ?? {}),
+              desiredSchema.ui_schema)
 
           if (changed) {
             throw new Error(
@@ -319,18 +330,11 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
       const publishProduct = async (pinSchemaVersion: boolean) => {
         const existingProduct = productIndex[`${verifierId}/${skuFor(b)}`]
         // The server re-marshals the schema through a Go map, which sorts
-        // properties alphabetically. Every published product comes back that
-        // way; the app then renders fields in whatever order arrives unless
-        // ui:order pins it. So a product authored without ui:order previews
-        // here in the author's order and renders on the phone alphabetically,
-        // which is exactly the mismatch Dylan reported. Pin the author's order
-        // at publish time whenever they have not pinned one themselves.
-        const authoredUi = (b.order_ui_schema as Record<string, unknown>) ?? {}
-        const authoredProps = Object.keys(
-          ((b.order_schema as Record<string, unknown>)?.properties as Record<string, unknown>) ?? {})
-        const orderUiSchema = (!authoredUi['ui:order'] && authoredProps.length > 0)
-          ? { ...authoredUi, 'ui:order': authoredProps }
-          : authoredUi
+        // properties alphabetically at every depth; only a ui:order survives.
+        // Pin the author's order at every object level — root, nested objects,
+        // array items — wherever they have not pinned one themselves. See
+        // pinAuthoredOrder for why hand-written orders are also sanitised.
+        const orderUiSchema = pinAuthoredOrder(b.order_schema, b.order_ui_schema)
         await productsApi.publish({
           stripe_product_id: existingProduct?.id,
           name:              b.name as string,
@@ -737,7 +741,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
         <PreviewErrorBoundary label="Order form">
           <OrderFormPreview
             schema={(effectiveBundle.order_schema as Record<string, unknown>) ?? {}}
-            uiSchema={(effectiveBundle.order_ui_schema as Record<string, unknown>) ?? {}}
+            uiSchema={pinAuthoredOrder(effectiveBundle.order_schema, effectiveBundle.order_ui_schema)}
           />
         </PreviewErrorBoundary>
       )}
@@ -745,7 +749,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
         <PreviewErrorBoundary label="Credential">
           <CredentialPreview
             schema={(effectiveBundle.data_schema as Record<string, unknown>) ?? {}}
-            uiSchema={(effectiveBundle.ui_schema as Record<string, unknown>) ?? {}}
+            uiSchema={pinAuthoredOrder(effectiveBundle.data_schema, effectiveBundle.ui_schema)}
             data={(effectiveBundle.data as Record<string, unknown>) ?? {}}
             verifierName={effectiveBundle.verifier_name as string}
             credentialType={effectiveBundle.credential_type as string}

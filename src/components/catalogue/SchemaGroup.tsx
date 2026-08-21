@@ -4,6 +4,7 @@
  */
 
 import type { ReactNode } from 'react'
+import { pinAuthoredOrder } from '@/lib/catalogue/uiOrderInjection'
 import type { ProductEntry, SchemaDriftRecord, SchemaIndexEntry } from '@/lib/ardisMsClient'
 import { AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Database, Eye, Package, Upload, XCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -353,7 +354,7 @@ export function SchemaGroup({ verifierId, credentialType, versions, products, dr
           <PreviewErrorBoundary label="Credential preview">
             <CredentialPreview
               schema={(previewSchema.data_schema as Record<string, unknown>) ?? {}}
-              uiSchema={(previewSchema.ui_schema as Record<string, unknown>) ?? {}}
+              uiSchema={pinAuthoredOrder(previewSchema.data_schema, previewSchema.ui_schema)}
               data={(previewSchema.sample_data as Record<string, unknown>) ?? {}}
               verifierName={products[0]?.verifier_name as string}
               credentialType={credentialType}
