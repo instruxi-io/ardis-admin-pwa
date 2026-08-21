@@ -27,12 +27,18 @@ const isDict = (v: unknown): v is Dict =>
 
 function sanitizeOrder(order: unknown[], propKeys: string[]): string[] {
   const known = new Set(propKeys)
-  const kept = order.filter(
-    (k): k is string => k === '*' || (typeof k === 'string' && known.has(k)),
-  )
+  const seen = new Set<string>()
+  const kept: string[] = []
+  for (const k of order) {
+    // Duplicates render the field twice on the phone and give RJSF duplicate
+    // React keys, so only the first occurrence of a name survives.
+    if ((k === '*' || (typeof k === 'string' && known.has(k))) && !seen.has(k as string)) {
+      seen.add(k as string)
+      kept.push(k as string)
+    }
+  }
   if (kept.includes('*')) return kept
-  const listed = new Set(kept)
-  return [...kept, ...propKeys.filter(k => !listed.has(k))]
+  return [...kept, ...propKeys.filter(k => !seen.has(k)), '*']
 }
 
 export function pinAuthoredOrder(schema: unknown, ui: unknown): Dict {
@@ -42,9 +48,14 @@ export function pinAuthoredOrder(schema: unknown, ui: unknown): Dict {
   const keys = Object.keys(props)
   if (keys.length === 0) return out
 
+  // Every order ends in '*'. RJSF stubs undeclared payload keys into
+  // properties wherever a schema level carries additionalProperties, and
+  // orderProperties THROWS if the order list has no place for them — one
+  // extra key in a credential payload would blank the whole card. The phone
+  // renderers filter '*' out, so it costs nothing there.
   out['ui:order'] = Array.isArray(out['ui:order'])
     ? sanitizeOrder(out['ui:order'], keys)
-    : keys
+    : [...keys, '*']
 
   for (const key of keys) {
     const field = props[key]

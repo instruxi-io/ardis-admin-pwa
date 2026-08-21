@@ -297,10 +297,17 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
           // the injected ui:order alone, and that difference is ours, not the
           // author's — it must not demand a version bump from someone who
           // changed nothing.
+          //
+          // Both sides are pinned against the AUTHORED data schema. The served
+          // one is alphabetised, so pinning each side against its own schema
+          // injects different default orders for identical content and a
+          // price-only edit gets blocked behind a version bump — the exact
+          // failure this branch exists to prevent. data_schema equality is
+          // already checked order-insensitively on the line above.
           const changed =
             !deepEqual(published.data_schema, desiredSchema.data_schema) ||
             !deepEqual(
-              pinAuthoredOrder(published.data_schema, published.ui_schema ?? {}),
+              pinAuthoredOrder(b.data_schema, published.ui_schema ?? {}),
               desiredSchema.ui_schema)
 
           if (changed) {
