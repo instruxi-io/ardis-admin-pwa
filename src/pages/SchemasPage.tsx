@@ -402,6 +402,27 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
     }
   }
 
+  // Reads the published thing back and compares it, shape-insensitively (the
+  // server alphabetises map keys; deepEqual does not care), against what was
+  // authored. Products compare the order form and the pinned ui; credential
+  // schemas compare the data schema and the pinned ui at their version.
+  const verifyLive = async (b: ViewModelBundle): Promise<boolean> => {
+    const kind = kindOf(b)
+    if (kind === 'credential-schema') {
+      const published = await schemasApi.get(
+        b.verifier_id as string, b.credential_type as string, (b.version as string) || 'v1')
+      return deepEqual(published.data_schema, b.data_schema) &&
+        deepEqual(published.ui_schema ?? {}, pinAuthoredOrder(b.data_schema, b.ui_schema))
+    }
+    const list = await productsApi.list()
+    const served = list.find(p => p.verifier_id === b.verifier_id && (p.sku ?? '').trim() === skuFor(b))
+    if (!served) return false
+    const sentProps = (b.order_schema as Record<string, unknown>)?.properties
+    const servedProps = (served.order_schema as Record<string, unknown> | undefined)?.properties
+    return deepEqual(servedProps, sentProps) &&
+      deepEqual(served.order_ui_schema ?? {}, pinAuthoredOrder(b.order_schema, b.order_ui_schema))
+  }
+
   const publishMutation = useMutation({
     // Publishes every dropped file in dependency order. Stops at the first
     // failure: a product almost always depends on a schema earlier in the queue,
@@ -413,8 +434,14 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
         setPublishLog(prev => prev.map(s => s.id === file.id ? { ...s, status: 'running' } : s))
         try {
           await publishBundle(b)
+          // Fetch what the server now serves and compare it with what was
+          // sent. "Published" from our own POST is a claim; this is the app's
+          // eye view, and the difference is the entire history of "did it
+          // actually publish?" emails. Verification failing does not fail the
+          // publish — it only withholds the stronger wording.
+          const verified = await verifyLive(b).catch(() => false)
           setPublishLog(prev => prev.map(s => s.id === file.id
-            ? { ...s, status: 'done', detail: KIND_LABEL[kindOf(b)] } : s))
+            ? { ...s, status: 'done', detail: KIND_LABEL[kindOf(b)] + (verified ? ' — read back from the server: live and identical' : '') } : s))
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'Publish failed'
           setPublishLog(prev => prev.map(s =>
@@ -764,7 +791,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
     <div className="grid grid-cols-1 gap-6 py-6 px-4 bg-muted/20 rounded-xl border border-border justify-items-center">
       {publishedThisSession ? (
         <div className="w-full rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-2.5 text-center">
-          <span className="text-xs font-semibold tracking-wide text-emerald-500 uppercase">Published — this is now live in the app</span>
+          <span className="text-xs font-semibold tracking-wide text-emerald-500 uppercase">Published — read back from the server and live in the app</span>
         </div>
       ) : (
         <div className="w-full rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-center">
