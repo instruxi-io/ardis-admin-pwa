@@ -233,8 +233,15 @@ export function SchemaGroup({ verifierId, credentialType, versions, products, dr
           checks the schema exists, and an arriving credential picks its schema by
           the version it carries, but neither asks whether they agree. */}
       {live && (() => {
-        const d = drift?.[`${verifierId}/${credentialType}/${live.version}`]
-          ?? drift?.[`${verifierId}/${credentialType}/latest`]
+        // Any version of this credential type, not just the newest: real
+        // credentials carry the version they were issued against, so the
+        // drift that matters is usually on an OLDER version — which is
+        // exactly where it sat, invisible, while this looked only at
+        // versions[0].
+        const d = Object.entries(drift ?? {})
+          .filter(([k]) => k.startsWith(`${verifierId}/${credentialType}/`))
+          .map(([, v]) => v)
+          .sort((a, b) => (b.last_seen ?? '').localeCompare(a.last_seen ?? ''))[0]
         if (!d) return null
         return <DriftNotice d={d} />
       })()}
