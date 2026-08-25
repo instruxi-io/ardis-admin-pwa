@@ -187,6 +187,16 @@ export function validateBundle(obj: ViewModelBundle): ValidationResult {
       }
       return out
     })(),
+    // ── Format mixing ──
+    ...(kind === 'product' ? [{
+      // A product file is parsed as the order-form half only; an embedded
+      // x-data-schema is not published, not warned about, just dropped. A
+      // vendor who pasted their combined file and added x-publishes: product
+      // shipped believing their new credential schema went live with it.
+      label: 'product file does not embed a credential schema',
+      pass: !('x-data-schema' in ((obj.order_schema as Record<string, unknown>) ?? {})),
+      message: 'This product file embeds x-data-schema, which a product file does not publish — the schema would be silently dropped. Move it to its own file with x-publishes: credential-schema',
+    }] : []),
     // ── Pricing (only checked if x-pricing is present) ──
     ...(() => {
       if (!hasOrder) return []
@@ -206,6 +216,36 @@ export function validateBundle(obj: ViewModelBundle): ValidationResult {
           pass: (xp.options ?? []).length > 0 &&
                 (xp.options ?? []).every(o => typeof o.amount === 'number' && o.amount > 0),
           message: 'Every pricing tier must have a positive amount in cents — tiers cannot be free',
+        },
+        {
+          // The first thing the server checks, and until now the one thing this
+          // panel did not: checkout finds a tier by matching the buyer's answer
+          // in the pricing field against each option's value, so an option
+          // without one can never be bought. A file with title/label but no
+          // value passed here as "valid" and came back 400 from the server.
+          label: 'x-pricing options each declare a value (the order-form answer that selects the tier)',
+          pass: (xp.options ?? []).every(
+            o => typeof (o as { value?: string }).value === 'string' &&
+                 ((o as { value?: string }).value as string).trim() !== ''),
+          message: 'Every pricing option needs "value": the answer in the pricing field that selects it (e.g. "monthly"). "title" or "name" alone cannot be matched at checkout',
+        },
+        {
+          // Reachability, not just presence: when the pricing field is an enum,
+          // an option value outside that enum is a price no form answer can
+          // ever select.
+          label: 'x-pricing option values are answers the pricing field accepts',
+          pass: (() => {
+            const fieldSchema = ((orderSchema.properties as Record<string, unknown>) ?? {})[xp.field ?? ''] as Record<string, unknown> | undefined
+            const allowed = Array.isArray(fieldSchema?.enum)
+              ? (fieldSchema!.enum as unknown[]).map(v => `${v}`)
+              : null
+            if (!allowed) return true
+            return (xp.options ?? []).every(o => {
+              const v = (o as { value?: string }).value
+              return !v || allowed.includes(v)
+            })
+          })(),
+          message: `x-pricing.field "${xp.field}" is an enum, and at least one option's value is not among its choices — that tier could never be selected`,
         },
         {
           label: 'x-pricing addons all have amounts defined (0 = free is allowed)',

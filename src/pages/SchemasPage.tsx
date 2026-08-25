@@ -336,6 +336,20 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
       // which is the whole reason the halves were separated.
       const publishProduct = async (pinSchemaVersion: boolean) => {
         const existingProduct = productIndex[`${verifierId}/${skuFor(b)}`]
+        // Same sku + same credential type is an update, and updates are the
+        // normal way to edit a price or an order form. Same sku + DIFFERENT
+        // credential type is almost certainly a copied file whose x-sku was
+        // never changed, and "updating" would overwrite an unrelated live
+        // product with this one's name, form, and pricing. The server cannot
+        // tell the two apart — only intent separates them — so it is blocked
+        // here, where the fix is a one-line edit.
+        if (existingProduct?.credential_type &&
+            existingProduct.credential_type !== credentialType) {
+          throw new Error(
+            `x-sku "${skuFor(b)}" already belongs to "${existingProduct.name}", ` +
+            `which issues ${existingProduct.credential_type} credentials. ` +
+            `Publishing would overwrite that product. Give this one its own x-sku.`)
+        }
         // The server re-marshals the schema through a Go map, which sorts
         // properties alphabetically at every depth; only a ui:order survives.
         // Pin the author's order at every object level — root, nested objects,
@@ -702,6 +716,13 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
     const key = `${verifierId}/${credentialType}`
 
     if (kind === 'product') {
+      // A sku that belongs to a product of a different credential type is a
+      // copied file whose x-sku was never changed; say so here, before the
+      // publish button refuses it.
+      const collision = productIndex[`${verifierId}/${skuFor(effectiveBundle)}`]
+      if (collision?.credential_type && collision.credential_type !== credentialType) {
+        return { ok: false, text: `x-sku "${skuFor(effectiveBundle)}" already belongs to "${collision.name}" (${collision.credential_type}). Publishing would overwrite it — give this product its own x-sku.` }
+      }
       const liveVersions = (grouped[key] ?? []).map(s => s.version)
       return liveVersions.length > 0
         ? { ok: true, text: `Renders with ${key} — published (${liveVersions.join(', ')}).` }

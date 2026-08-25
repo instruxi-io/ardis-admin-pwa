@@ -129,6 +129,16 @@ describe('validateBundle: ui references', () => {
   })
 })
 
+describe('validateBundle: format mixing', () => {
+  it('rejects a product file that embeds x-data-schema', () => {
+    // The parser drops the embedded schema without a word; the vendor ships
+    // believing their new credential schema went live with the product.
+    const b = product()
+    ;(b.order_schema as Record<string, unknown>)['x-data-schema'] = { type: 'object' }
+    expect(failed(b).join(' ')).toMatch(/does not embed a credential schema/)
+  })
+})
+
 describe('validateBundle: pricing', () => {
   const priced = (xp: unknown) => product({ 'x-pricing': xp })
 
@@ -150,6 +160,42 @@ describe('validateBundle: pricing', () => {
       options: [{ value: 'standard', amount: 4500, currency: 'gbp' }],
     })
     expect(failed(withCurrency)).toEqual([])
+  })
+
+  it("requires a value on every option — a title alone can never be bought", () => {
+    // The exact file a vendor published: options carrying title/name, amount,
+    // currency, interval, and no value. The renderer said valid, the server
+    // said 400. Checkout matches the buyer's answer in the pricing field
+    // against option values, so an option without one is unreachable.
+    const dylanShaped = priced({
+      field: 'tier',
+      options: [
+        { title: 'Monthly', amount: 3900, currency: 'USD', interval: 'month' },
+        { name: 'Yearly', amount: 39000, currency: 'USD', interval: 'year' },
+      ],
+    })
+    expect(failed(dylanShaped).join(' ')).toMatch(/value/)
+  })
+
+  it('rejects an option value the pricing field cannot answer', () => {
+    // tier is an enum of standard/express; a "premium" tier exists in Stripe
+    // but no form answer ever selects it.
+    const b = priced({
+      field: 'tier',
+      options: [{ value: 'premium', amount: 9900, currency: 'usd' }],
+    })
+    expect(failed(b).join(' ')).toMatch(/values are answers/)
+  })
+
+  it('accepts option values drawn from the pricing field enum', () => {
+    const b = priced({
+      field: 'tier',
+      options: [
+        { value: 'standard', amount: 4500, currency: 'usd' },
+        { value: 'express', amount: 9900, currency: 'usd', interval: 'month' },
+      ],
+    })
+    expect(failed(b)).toEqual([])
   })
 
   it('requires the pricing field to exist in the order form', () => {

@@ -22,6 +22,21 @@ ardisMsClient.interceptors.request.use((cfg) => {
   return cfg
 })
 
+// The server says exactly why it rejected a publish ({success, error, message})
+// but axios' default message is "Request failed with status code 400", and that
+// is what the publish log showed a vendor while the real reason — for example
+// "x_pricing.options[0].value is required" — sat unread in the response body.
+// Rewrite the error message once here so every caller's catch shows the reason.
+ardisMsClient.interceptors.response.use(undefined, (error) => {
+  const body = error?.response?.data
+  if (body && typeof body.message === 'string' && body.message.trim() !== '') {
+    error.message = body.error
+      ? `${body.message} (${body.error})`
+      : body.message
+  }
+  return Promise.reject(error)
+})
+
 export interface SchemaIndexEntry {
   verifier_id: string
   credential_type: string
