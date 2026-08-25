@@ -32,6 +32,7 @@ import {
   type ViewModelBundle,
 } from '@/lib/catalogue/bundleFormat'
 import { pinAuthoredOrder } from '@/lib/catalogue/uiOrderInjection'
+import { autoRepair } from '@/lib/catalogue/autoRepair'
 
 // ── Bundle file format (Andy / standard JSON Forms convention) ────────────────
 //
@@ -130,12 +131,18 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
 
   const addFiles = (dropped: { name: string; raw: string }[]) => {
     if (dropped.length === 0) return
-    const entries: DroppedFile[] = dropped.map((d, i) => ({
+    // Repair on intake: the recurring copy-paste mistakes (embedded schema,
+    // borrowed sku, pricing without values) each have one correct
+    // interpretation, so they are rewritten here — possibly splitting one file
+    // into two — and each row says what changed. See autoRepair.
+    const repaired = dropped.flatMap(d => autoRepair(d.name, d.raw, products))
+    const entries: DroppedFile[] = repaired.map((d, i) => ({
       // Names can repeat across drops; the index keeps ids unique without a uuid.
       id: `${d.name}-${files.length + i}-${d.raw.length}`,
       name: d.name,
       raw: d.raw,
       edited: null,
+      notes: d.notes,
     }))
     setFiles(prev => [...prev, ...entries])
     setSelectedId(prev => prev ?? entries[0].id)
@@ -973,6 +980,15 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                                     kind === 'credential-schema' ? `/${(q.bundle!.version as string) || 'v1'}` : ''}`
                                 : 'could not be parsed'}
                             </p>
+                            {(q.file.notes?.length ?? 0) > 0 && (
+                              <ul className="mt-1 space-y-0.5">
+                                {q.file.notes!.map((n, ni) => (
+                                  <li key={ni} className="text-[11px] text-amber-600 leading-snug">
+                                    Fixed for you: {n}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
                           </div>
                           {kind && (
                             <Badge variant="secondary" className="text-[10px] font-mono shrink-0">

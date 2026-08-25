@@ -10,6 +10,8 @@ export interface DroppedFile {
   name: string
   raw: string
   edited: string | null
+  /** What intake repaired in this file, in plain English. Empty = untouched. */
+  notes?: string[]
 }
 
 export interface PublishStep {
