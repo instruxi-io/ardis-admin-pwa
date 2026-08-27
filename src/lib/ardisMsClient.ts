@@ -178,3 +178,35 @@ export const schemasApi = {
     return res.data.data
   },
 }
+
+export interface OrderRoute {
+  credential_type: string   // normalised key, eg "portable_verification"
+  order_url: string
+  order_type: string        // what the vendor's own API calls this order, when it differs
+}
+
+export interface OrderRoutes {
+  verifier_id: string
+  default_order_url: string // where anything without its own entry is delivered
+  routes: OrderRoute[]
+}
+
+// Credential types become metadata keys, and the server normalises them the
+// same way. Matching a type to its route in the UI has to use the same rule or
+// a hyphenated type looks unrouted when it is routed.
+export const routeKey = (credentialType: string) =>
+  credentialType.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_')
+
+export const orderRoutesApi = {
+  get: async (): Promise<OrderRoutes> => {
+    const res = await ardisMsClient.get<{ success: boolean; data: OrderRoutes }>('/vendor/routes')
+    return res.data.data
+  },
+
+  set: async (credentialType: string, orderUrl: string, orderType?: string): Promise<void> => {
+    await ardisMsClient.put(`/vendor/routes/${encodeURIComponent(credentialType)}`, {
+      order_url: orderUrl,
+      order_type: orderType ?? '',
+    })
+  },
+}
