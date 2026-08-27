@@ -32,7 +32,15 @@ export function productToFileText(p: ProductEntry): string {
   }
   if (p.x_pricing)              obj1['x-pricing'] = p.x_pricing
   if (p.product_role)           obj1['x-product-role'] = p.product_role
-  if (p.price_one_time)         obj1['x-price-one-time'] = p.price_one_time
+  // Cents, because that is what publishing sends and what the server stores.
+  // The server REPORTS this field in dollars (buildPricingResponse divides by
+  // 100) while parseDesiredPrices reads it back as cents, so copying the
+  // reported number into the file straight turned a $25.00 product into a
+  // $0.25 one the next time it was published, archiving the real price on the
+  // way. Convert once, here, where the two units meet.
+  if (p.price_one_time) {
+    obj1['x-price-one-time'] = Math.round(Number(p.price_one_time) * 100)
+  }
 
   const files = [obj1, p.order_ui_schema ?? {}, {}]
   return files.map(o => JSON.stringify(o, null, 2)).join('\n')

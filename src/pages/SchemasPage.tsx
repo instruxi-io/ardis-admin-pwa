@@ -637,12 +637,16 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
       // so whatever is on screen is what gets published.
       const obj1: Record<string, unknown> = {
         ...(content.data_schema ?? {}),
-        '$id':               `${verifierId}/${credentialType}/${version}`,
+        // The NEXT version, which is what the button and the notice beside it
+        // both promise. This carried the current version, so publishing what
+        // it loaded either changed nothing or demanded a hand edit of the JSON
+        // to bump it: a button called New Version that could not make one.
+        '$id':               `${verifierId}/${credentialType}/${nextVersion(version)}`,
         'title':             name,
         'x-publishes':       'credential-schema',
         'x-verifier-id':     verifierId,
         'x-credential-type': credentialType,
-        'x-version':         version,
+        'x-version':         nextVersion(version),
         'type':              'object',
       }
       if (product?.description) obj1['description'] = product.description
@@ -654,7 +658,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
       setSelectedId(null)
       setPublishLog([])
       setShowImport(true)
-      toast.success(`Loaded ${name} — review and publish to create a new version`)
+      toast.success(`Loaded ${name} as ${nextVersion(version)} — review and publish`)
     } catch {
       toast.error('Failed to load schema for editing')
     }
@@ -684,6 +688,14 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
   const visibleSchemas = isPlatformMode
     ? schemas.filter(s => schemaProductRole(s) === 'platform')
     : schemas.filter(s => schemaProductRole(s) !== 'platform')
+
+  // The index holds one row per PUBLISH, so a version republished three times
+  // appears three times. The groups below de-duplicate to one row per version;
+  // the header counted the raw index and so contradicted the list directly
+  // underneath it, claiming twice as many versions as the page showed.
+  const distinctVersionCount = new Set(
+    visibleSchemas.map(s => `${s.verifier_id}/${s.credential_type}/${s.version}`),
+  ).size
 
   // Products scoped the same way the schemas are. The counts and the orphan list
   // were computed from the unfiltered sets while the groups below were filtered,
@@ -1386,7 +1398,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                 : [
                     `${visibleProducts.length} product${visibleProducts.length === 1 ? '' : 's'}`,
                     `${Object.keys(grouped).length} credential type${Object.keys(grouped).length === 1 ? '' : 's'}`,
-                    `${visibleSchemas.length} schema version${visibleSchemas.length === 1 ? '' : 's'}`,
+                    `${distinctVersionCount} schema version${distinctVersionCount === 1 ? '' : 's'}`,
                     ...(orphanProducts.length > 0 ? [`${orphanProducts.length} without a schema`] : []),
                   ].join(' · ')}
             </CardTitle>
