@@ -9,6 +9,13 @@ import { Input } from './input'
 import { InfoDot } from './tooltip'
 
 /**
+ * Route keys normalise a credential type to underscores. The vendor wrote it
+ * with hyphens and every other surface shows it that way, so show theirs: three
+ * spellings of one name across a page is its own support ticket.
+ */
+const displayType = (routeKey: string) => routeKey.replace(/_/g, '-')
+
+/**
  * Where each of your products' orders is delivered.
  *
  * A product published for a credential type with no endpoint of its own has
@@ -21,6 +28,7 @@ import { InfoDot } from './tooltip'
 export function OrderDelivery({ credentialTypes }: { credentialTypes: string[] }) {
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState<string | null>(null)
+  const [confirmStop, setConfirmStop] = useState<string | null>(null)
   const [draftUrl, setDraftUrl] = useState('')
   const [draftType, setDraftType] = useState('')
 
@@ -36,7 +44,10 @@ export function OrderDelivery({ credentialTypes }: { credentialTypes: string[] }
     onSuccess: (_r, v) => {
       queryClient.invalidateQueries({ queryKey: ['vendor-routes'] })
       setEditing(null)
-      toast.success(v.url ? 'Orders for this product now go to your endpoint' : 'Endpoint cleared')
+      setConfirmStop(null)
+      toast.success(v.url
+        ? `Orders for ${displayType(v.type)} now go to your address. This covers every product that uses this credential type.`
+        : `Orders for ${displayType(v.type)} now go to the Instruxi test endpoint. They will be answered with test results and will not reach you.`)
     },
     // The server already says exactly what is wrong ("must be a full https
     // address"). Swallowing it for a generic failure leaves them guessing.
@@ -87,7 +98,7 @@ export function OrderDelivery({ credentialTypes }: { credentialTypes: string[] }
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">{type.replace(/_/g, ' ')}</span>
+                    <span className="text-sm font-mono font-medium">{displayType(type)}</span>
                     {live ? (
                       <span className="inline-flex items-center gap-1 text-xs text-emerald-600">
                         <CheckCircle2 size={12} />Your endpoint
@@ -98,12 +109,23 @@ export function OrderDelivery({ credentialTypes }: { credentialTypes: string[] }
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground font-mono truncate mt-0.5">
-                    {route?.order_url || data.default_order_url}
-                  </p>
+                  {live ? (
+                    <p className="text-xs text-muted-foreground font-mono truncate mt-0.5">
+                      {route!.order_url}
+                    </p>
+                  ) : (
+                    // Deliberately words, not the URL. Printing our stand-in's
+                    // address under their product reads as "our customers'
+                    // details are being sent there", which is a compliance
+                    // question we do not want to answer by accident.
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Instruxi's test service answers these automatically with test
+                      results. Nothing reaches you.
+                    </p>
+                  )}
                   {route?.order_type && (
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Sent to you as order_type "{route.order_type}"
+                      We label these "{route.order_type}" when we send them
                     </p>
                   )}
                 </div>
@@ -135,33 +157,67 @@ export function OrderDelivery({ credentialTypes }: { credentialTypes: string[] }
                       autoFocus
                     />
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    Applies to orders placed from now on. Orders already sent stay
+                    where they went.
+                  </p>
                   <div>
                     <label className="text-xs text-muted-foreground">
-                      What your API calls this kind of order, if it is not "{type}" (optional)
+                      Leave blank unless your system expects a different word for this order
                     </label>
                     <Input
                       value={draftType}
                       onChange={e => setDraftType(e.target.value)}
-                      placeholder={type}
+                      placeholder={displayType(type)}
                     />
                   </div>
+                  {confirmStop === type && (
+                    <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 space-y-2">
+                      <p className="text-xs">
+                        Orders for <span className="font-mono">{displayType(type)}</span> will go to
+                        Instruxi's test service instead of to you. They will be answered
+                        automatically with test results, and you will not receive them.
+                        Anything already sent is unaffected.
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={save.isPending}
+                          onClick={() => save.mutate({ type, url: '', orderType: '' })}
+                        >
+                          Yes, stop sending them to me
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => setConfirmStop(null)}>
+                          Keep my address
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-2 pt-1">
+                    {/* Disabled on an empty box. Clearing the field to retype an
+                        address and pressing Save used to unroute the product,
+                        silently, through the same call the stop button uses. */}
                     <Button
                       size="sm"
-                      disabled={save.isPending}
+                      disabled={save.isPending || !draftUrl.trim()}
                       onClick={() => save.mutate({ type, url: draftUrl.trim(), orderType: draftType.trim() })}
                     >
                       Save
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setEditing(null)}>Cancel</Button>
+                    <Button variant="ghost" size="sm" onClick={() => { setEditing(null); setConfirmStop(null) }}>Cancel</Button>
                     {live && (
+                      // Sends live, paid orders to our stand-in instead of the
+                      // vendor. It asks first, and says what it will do.
                       <Button
                         variant="ghost"
                         size="sm"
                         className="text-muted-foreground"
-                        onClick={() => save.mutate({ type, url: '', orderType: '' })}
+                        disabled={save.isPending}
+                        onClick={() => setConfirmStop(type)}
                       >
-                        Send back to the test endpoint
+                        Stop sending these orders to me
                       </Button>
                     )}
                   </div>
@@ -172,5 +228,34 @@ export function OrderDelivery({ credentialTypes }: { credentialTypes: string[] }
         })}
       </CardContent>
     </Card>
+  )
+}
+
+/**
+ * The go-live banner tells a vendor their product is "orderable, end to end".
+ * For a brand new credential type that is true of the buying half and false of
+ * the delivery half: the orders go to our stand-in, which answers them
+ * automatically, so nothing looks broken while nothing reaches the vendor.
+ * This says so at the one moment they are looking.
+ *
+ * Shares the ['vendor-routes'] cache with OrderDelivery, so it costs no extra
+ * request. Silent when it cannot tell, never a false alarm.
+ */
+export function UnroutedWarning({ credentialTypes }: { credentialTypes: string[] }) {
+  const { data } = useQuery<OrderRoutes>({
+    queryKey: ['vendor-routes'],
+    queryFn: orderRoutesApi.get,
+    retry: false,
+  })
+  if (!data) return null
+  const routed = new Set(data.routes.filter(r => r.order_url).map(r => r.credential_type))
+  const unrouted = [...new Set(credentialTypes.map(routeKey))].filter(t => t && !routed.has(t))
+  if (unrouted.length === 0) return null
+  return (
+    <p className="text-xs text-amber-600">
+      One thing left. Orders for {unrouted.map(displayType).join(', ')} still
+      come to Instruxi's test endpoint, which answers them automatically, so they will not
+      reach you. Set your address under "Where your orders are delivered" below.
+    </p>
   )
 }

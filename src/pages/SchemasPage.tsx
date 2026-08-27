@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { PublishConfirmModal } from '@/components/ui/publish-confirm-modal'
 import { InfoDot } from '@/components/ui/tooltip'
-import { OrderDelivery } from '@/components/ui/order-delivery'
+import { OrderDelivery, UnroutedWarning } from '@/components/ui/order-delivery'
 import { env } from '@/config/env'
 import { GuidePanel } from '@/components/catalogue/GuidePanel'
 import { PreviewErrorBoundary, SchemaGroup } from '@/components/catalogue/SchemaGroup'
@@ -81,6 +81,9 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
   // Product names that just went live, for the moment that deserves more than
   // a toast: the vendor's work is on a real phone right now and we can prove it.
   const [justWentLive, setJustWentLive] = useState<string[] | null>(null)
+  // Credential types of whatever just published, so the banner can say whether
+  // those orders can actually reach the vendor yet.
+  const [justWentLiveTypes, setJustWentLiveTypes] = useState<string[]>([])
 
   const IS_PROD = env.APP_ENV === 'production'
 
@@ -463,9 +466,11 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
       const productCount = kinds.filter(k => k !== 'credential-schema').length
 
       if (productCount > 0) {
-        setJustWentLive(items
-          .filter(i => kindOf(i.bundle) !== 'credential-schema')
-          .map(i => (i.bundle.name as string) || i.file.name))
+        const published = items.filter(i => kindOf(i.bundle) !== 'credential-schema')
+        setJustWentLive(published.map(i => (i.bundle.name as string) || i.file.name))
+        setJustWentLiveTypes(published
+          .map(i => (i.bundle.credential_type as string) || '')
+          .filter(Boolean))
       }
 
       // Anything that published a product is orderable in the app right now,
@@ -893,6 +898,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
                   the hosted test phone: open the catalogue tab and it is there, orderable,
                   end to end.
                 </p>
+                <UnroutedWarning credentialTypes={justWentLiveTypes} />
                 <div className="flex items-center gap-3 pt-1">
                   <Button size="sm" asChild>
                     <a href="https://credpass-status.vercel.app/try.html" target="_blank" rel="noreferrer">
