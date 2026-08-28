@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { AlertTriangle, CheckCircle2, Send } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock, Send, XCircle } from 'lucide-react'
 import { orderRoutesApi, routeKey, type OrderRoutes } from '@/lib/ardisMsClient'
 import { Card, CardContent, CardHeader, CardTitle } from './card'
 import { Button } from './button'
@@ -68,6 +68,7 @@ export function OrderDelivery({ credentialTypes }: { credentialTypes: string[] }
   if (types.length === 0) return null
 
   const unrouted = types.filter(t => !byType.get(t)?.order_url).length
+  const refusing = types.filter(t => byType.get(t)?.last_delivery?.ok === false).length
 
   return (
     <Card>
@@ -83,15 +84,26 @@ export function OrderDelivery({ credentialTypes }: { credentialTypes: string[] }
           Where your orders are delivered
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          {unrouted > 0
-            ? `${unrouted} of your ${types.length} credential type${types.length === 1 ? '' : 's'} ${unrouted === 1 ? 'is' : 'are'} still going to the Instruxi test endpoint. Add your address and orders reach you instead.`
-            : 'Every credential type is pointed at your own endpoint.'}
+          {refusing > 0
+            ? `${refusing === 1 ? 'One of your endpoints is' : `${refusing} of your endpoints are`} turning our orders away, so those orders are not reaching you.${unrouted > 0 ? ` A further ${unrouted} have no address set yet.` : ''}`
+            : unrouted > 0
+              ? `${unrouted} of your ${types.length} credential type${types.length === 1 ? '' : 's'} ${unrouted === 1 ? 'is' : 'are'} still going to the Instruxi test endpoint. Add your address and orders reach you instead.`
+              : types.every(t => byType.get(t)?.last_delivery?.ok === true)
+                ? 'Every credential type is pointed at your own endpoint, and the last order to each one was accepted.'
+                : 'Every credential type is pointed at your own endpoint. Some have not taken an order yet, so we cannot confirm delivery for those.'}
         </p>
       </CardHeader>
       <CardContent className="p-0">
         {types.map(type => {
           const route = byType.get(type)
-          const live = !!route?.order_url
+          const configured = !!route?.order_url
+          const failing = configured && route?.last_delivery?.ok === false
+          // Green is earned, not assumed. It requires a delivery we actually
+          // saw succeed. Treating "no record yet" as healthy is what let an
+          // endpoint that had refused three consecutive orders show a green
+          // tick, because the refusals predated this record existing.
+          const live = configured && route?.last_delivery?.ok === true
+          const unconfirmed = configured && !failing && !live
           const isEditing = editing === type
           return (
             <div key={type} className="px-6 py-3 border-t border-border">
@@ -99,17 +111,28 @@ export function OrderDelivery({ credentialTypes }: { credentialTypes: string[] }
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-mono font-medium">{displayType(type)}</span>
-                    {live ? (
+                    {live && (
                       <span className="inline-flex items-center gap-1 text-xs text-emerald-600">
                         <CheckCircle2 size={12} />Your endpoint
                       </span>
-                    ) : (
+                    )}
+                    {failing && (
+                      <span className="inline-flex items-center gap-1 text-xs text-red-500">
+                        <XCircle size={12} />Your endpoint is refusing orders
+                      </span>
+                    )}
+                    {unconfirmed && (
+                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                        <Clock size={12} />Your endpoint, no order delivered yet
+                      </span>
+                    )}
+                    {!configured && (
                       <span className="inline-flex items-center gap-1 text-xs text-amber-600">
                         <AlertTriangle size={12} />Instruxi test endpoint
                       </span>
                     )}
                   </div>
-                  {live ? (
+                  {configured ? (
                     <p className="text-xs text-muted-foreground font-mono truncate mt-0.5">
                       {route!.order_url}
                     </p>
@@ -121,6 +144,15 @@ export function OrderDelivery({ credentialTypes }: { credentialTypes: string[] }
                     <p className="text-xs text-muted-foreground mt-0.5">
                       Instruxi's test service answers these automatically with test
                       results. Nothing reaches you.
+                    </p>
+                  )}
+                  {failing && (
+                    <p className="text-xs text-red-500 mt-1">
+                      We sent an order and your endpoint turned it away
+                      {route?.last_delivery?.at ? ` on ${new Date(route.last_delivery.at).toLocaleString()}` : ''}.
+                      {route?.last_delivery?.detail ? ` It replied: ${route.last_delivery.detail}` : ''}
+                      {' '}Until this clears, these orders are answered by Instruxi's test
+                      service and do not reach you.
                     </p>
                   )}
                   {route?.order_type && (
@@ -139,7 +171,7 @@ export function OrderDelivery({ credentialTypes }: { credentialTypes: string[] }
                       setDraftType(route?.order_type ?? '')
                     }}
                   >
-                    {live ? 'Change' : 'Use my endpoint'}
+                    {configured ? 'Change' : 'Use my endpoint'}
                   </Button>
                 )}
               </div>
@@ -207,7 +239,7 @@ export function OrderDelivery({ credentialTypes }: { credentialTypes: string[] }
                       Save
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => { setEditing(null); setConfirmStop(null) }}>Cancel</Button>
-                    {live && (
+                    {configured && (
                       // Sends live, paid orders to our stand-in instead of the
                       // vendor. It asks first, and says what it will do.
                       <Button

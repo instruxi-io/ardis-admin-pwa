@@ -179,10 +179,20 @@ export const schemasApi = {
   },
 }
 
+export interface OrderDelivery {
+  at: string
+  ok: boolean
+  detail?: string           // the vendor's own refusal text, truncated
+}
+
 export interface OrderRoute {
   credential_type: string   // normalised key, eg "portable_verification"
   order_url: string
   order_type: string        // what the vendor's own API calls this order, when it differs
+  // Outcome of the most recent delivery attempt. Absent means no order yet.
+  // Configured is not the same as working: without this the panel showed a
+  // green tick over an endpoint that had refused every order sent to it.
+  last_delivery?: OrderDelivery
 }
 
 export interface OrderRoutes {
@@ -208,5 +218,24 @@ export const orderRoutesApi = {
       order_url: orderUrl,
       order_type: orderType ?? '',
     })
+  },
+}
+
+export interface VendorOrder {
+  order_id: string
+  credential_type: string
+  sku: string
+  status: string
+  placed_at: string
+  updated_at: string
+  vendor_order_id: string
+  delivery?: { state: string; attempts: number; last_error: string }
+}
+
+export const vendorOrdersApi = {
+  list: async (): Promise<VendorOrder[]> => {
+    const res = await ardisMsClient.get<{ success: boolean; data: { orders: VendorOrder[] } }>(
+      '/vendor/orders')
+    return res.data.data?.orders ?? []
   },
 }
