@@ -7,7 +7,7 @@ import { parseBundle } from './bundleFormat'
 // It used to emit the schema twice, as top-level `properties` and again under
 // `x-data-schema`. Publishing reads x-data-schema, so an edit made in the
 // obvious place was silently dropped and the new version came out identical to
-// the old one. Dylan reported it as the wrong version loading, which is exactly
+// the old one. the vendor reported it as the wrong version loading, which is exactly
 // what it looks like from outside: you edit, you publish, nothing changed.
 // ardis/license v3, v4 and v5 are all byte-identical because of it.
 //

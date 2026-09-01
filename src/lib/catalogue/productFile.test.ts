@@ -5,7 +5,7 @@ import type { ProductEntry } from '../ardisMsClient'
 
 // The whole feature is one invariant: what Edit order form loads is exactly
 // what publish consumes, with nothing dropped in between. Broken silently,
-// this recreates the week Dylan just had, so it is pinned as a round trip
+// this recreates the week the vendor just had, so it is pinned as a round trip
 // through the same parser the import flow uses.
 const product: ProductEntry = {
   name: 'License Verification',

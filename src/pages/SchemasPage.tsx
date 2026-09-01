@@ -36,7 +36,7 @@ import {
 import { pinAuthoredOrder } from '@/lib/catalogue/uiOrderInjection'
 import { autoRepair } from '@/lib/catalogue/autoRepair'
 
-// ── Bundle file format (Andy / standard JSON Forms convention) ────────────────
+// ── Bundle file format (standard JSON Forms convention) ───────────────────────
 //
 // One file, three JSON objects stacked vertically:
 //
@@ -635,7 +635,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
       // again under `x-data-schema`. Publishing reads x-data-schema (see
       // bundleFormat), so an edit made in the obvious place, the top-level
       // properties, was silently dropped and the "new version" came out
-      // byte-identical to the one before it. Reported by Dylan as the wrong
+      // byte-identical to the one before it. Reported by the vendor as the wrong
       // version loading, which is what it looks like from the outside: you
       // edit, publish, and nothing changed. ardis/license v3, v4 and v5 are all
       // identical for exactly this reason.
