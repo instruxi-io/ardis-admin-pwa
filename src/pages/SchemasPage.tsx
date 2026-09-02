@@ -18,6 +18,7 @@ import { PublishConfirmModal } from '@/components/ui/publish-confirm-modal'
 import { InfoDot } from '@/components/ui/tooltip'
 import { OrderDelivery, UnroutedWarning } from '@/components/ui/order-delivery'
 import { VendorOrders } from '@/components/ui/vendor-orders'
+import { AddTeammate } from '@/components/ui/add-teammate'
 import { env } from '@/config/env'
 import { GuidePanel } from '@/components/catalogue/GuidePanel'
 import { PreviewErrorBoundary, SchemaGroup } from '@/components/catalogue/SchemaGroup'
@@ -875,6 +876,7 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
             <Button variant="outline" size="sm" onClick={loadExamplePair}>
               <FileJson size={14} className="mr-1.5" />Load example
             </Button>
+            {!isPlatformMode && <AddTeammate />}
             <Button onClick={() => showImport ? resetImport() : setShowImport(true)} size="sm">
               {showImport ? 'Cancel' : <><Upload size={14} className="mr-1.5" />Import</>}
             </Button>

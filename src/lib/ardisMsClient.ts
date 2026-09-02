@@ -239,3 +239,13 @@ export const vendorOrdersApi = {
     return res.data.data?.orders ?? []
   },
 }
+
+export const vendorTeamApi = {
+  add: async (email: string, firstName?: string, lastName?: string): Promise<void> => {
+    await ardisMsClient.post('/vendor/users', {
+      email,
+      first_name: firstName ?? '',
+      last_name: lastName ?? '',
+    })
+  },
+}
