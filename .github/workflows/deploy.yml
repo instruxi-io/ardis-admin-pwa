@@ -52,4 +52,8 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=credpass-admin-portal-dev
+          # --branch matters: without it wrangler cannot infer the branch in CI,
+          # so the deployment updated the bare project alias while the URL the
+          # client actually uses, master.credpass-admin-portal-dev.pages.dev,
+          # kept serving the previous build.
+          command: pages deploy dist --project-name=credpass-admin-portal-dev --branch=master
