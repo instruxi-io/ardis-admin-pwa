@@ -31,6 +31,14 @@ jobs:
 
       - name: Test
         run: npm test -- --run
+        # The same variables the build gets. src/config/env.ts throws on a
+        # missing one, and a test that imports it therefore failed to load —
+        # which failed the job, so this pipeline had never once deployed and
+        # master sat behind what was live.
+        env:
+          VITE_ENFORCER_BASE_URL: ${{ vars.VITE_ENFORCER_BASE_URL }}
+          VITE_ARDIS_MS_URL: ${{ vars.VITE_ARDIS_MS_URL }}
+          VITE_APP_ENV: staging
 
       - name: Build
         run: npm run build
