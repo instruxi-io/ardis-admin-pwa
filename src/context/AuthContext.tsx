@@ -88,8 +88,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             activeTenantId: res.data.tenant_id ?? (res.data as any).tenant?.id ?? null,
           })
         })
-        .catch(() => {
-          apiKeyStorage.clear()
+        .catch((err) => {
+          // Only a rejected key clears it. Any other failure — the gateway
+          // restarting, a dropped connection — used to wipe the saved key and
+          // drop the admin at the login screen with nothing to paste back.
+          const code = err?.response?.status
+          if (code === 401 || code === 403) apiKeyStorage.clear()
           setState((s) => ({ ...s, ready: true }))
         })
       return

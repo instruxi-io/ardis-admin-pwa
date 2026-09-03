@@ -24,7 +24,25 @@ export function VendorOrders() {
 
   // A tenant admin belongs to no single vendor, so this cannot be scoped for
   // them and the endpoint says so. Nothing useful to render.
-  if (isLoading || isError || !data) return null
+  if (isLoading || !data) return null
+  // An error is not the same as "not applicable to you". The panel used to
+  // disappear on both, so a vendor whose orders failed to load saw the same
+  // screen as one who has no orders panel at all.
+  if (isError) return (
+    <Card>
+      <CardHeader className="py-4">
+        <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+          <Inbox size={14} />
+          Your recent orders
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="px-6 pb-6 pt-0">
+        <p className="text-sm text-muted-foreground">
+          Your orders could not be loaded just now. Reload the page to try again.
+        </p>
+      </CardContent>
+    </Card>
+  )
 
   return (
     <Card>
@@ -47,7 +65,10 @@ export function VendorOrders() {
           </p>
         )}
         {data.map(o => {
-          const failed = !!o.delivery?.last_error
+          // The state is the fact; the error message is only the explanation,
+          // and it can be empty. Reading the message alone made an abandoned
+          // delivery look identical to one still being retried.
+          const failed = o.delivery?.state === 'failed' || !!o.delivery?.last_error
           const delivered = o.delivery?.state === 'delivered'
           return (
             <div key={o.order_id} className="px-6 py-3 border-t border-border">
@@ -73,7 +94,10 @@ export function VendorOrders() {
                     )}
                   </div>
                   {failed && (
-                    <p className="text-xs text-red-500 mt-1">{o.delivery!.last_error}</p>
+                    <p className="text-xs text-red-500 mt-1">
+                      {o.delivery?.last_error ||
+                        'Delivery was abandoned after repeated attempts. No reason was recorded.'}
+                    </p>
                   )}
                   <p className="text-xs text-muted-foreground mt-0.5">
                     Placed {new Date(o.placed_at).toLocaleString()}
