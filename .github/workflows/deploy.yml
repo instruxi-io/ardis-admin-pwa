@@ -56,4 +56,9 @@ jobs:
           # so the deployment updated the bare project alias while the URL the
           # client actually uses, master.credpass-admin-portal-dev.pages.dev,
           # kept serving the previous build.
-          command: pages deploy dist --project-name=credpass-admin-portal-dev --branch=master
+          # --commit-dirty: the build writes into the working tree, so wrangler
+          # sees a dirty repo and, when it does, refuses to attach the branch
+          # alias — the deployment lands on a hashed preview URL and
+          # master.credpass-admin-portal-dev.pages.dev, the link the client
+          # has, keeps serving whatever it served before.
+          command: pages deploy dist --project-name=credpass-admin-portal-dev --branch=master --commit-dirty=true
