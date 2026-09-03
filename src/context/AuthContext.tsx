@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import type { PublicAccount, JwtClaims } from '@/types/enforcer/auth'
 import { decodeJwt, isTokenExpired, tokenStorage, apiKeyStorage } from '@/lib/jwt'
-import { createEnforcerApiClient, getEnforcerApiClient } from '@/lib/enforcerApiClient'
+import { EnforcerApiError, createEnforcerApiClient, getEnforcerApiClient } from '@/lib/enforcerApiClient'
 import { env } from '@/config/env'
 import type { VerifyAuthResponse } from '@/types/enforcer/auth'
 import type { BaseResponse } from '@/types/enforcer/common'
@@ -88,11 +88,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             activeTenantId: res.data.tenant_id ?? (res.data as any).tenant?.id ?? null,
           })
         })
-        .catch((err) => {
+        .catch((err: unknown) => {
           // Only a rejected key clears it. Any other failure — the gateway
           // restarting, a dropped connection — used to wipe the saved key and
           // drop the admin at the login screen with nothing to paste back.
-          const code = err?.response?.status
+          //
+          // statusCode, not response.status: this client throws
+          // EnforcerApiError, which has no `response`. Reading the wrong field
+          // made the condition permanently false, which is the opposite bug —
+          // a genuinely rejected key would never be cleared and the admin
+          // would be stuck on a dead session with no way back to the login
+          // screen.
+          const code =
+            err instanceof EnforcerApiError ? err.statusCode : undefined
           if (code === 401 || code === 403) apiKeyStorage.clear()
           setState((s) => ({ ...s, ready: true }))
         })

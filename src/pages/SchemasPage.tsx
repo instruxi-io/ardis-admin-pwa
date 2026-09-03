@@ -115,7 +115,13 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
     // An edit means what is on screen is no longer what was published. The
     // green "live in the app" banner used to survive it, so an edited bundle
     // claimed to be live and a vendor walked away without publishing it.
-    setPublishLog([])
+    //
+    // Not while a publish is running: that would wipe the progress rows and
+    // the failure summary out from under it.
+    setPublishLog(prev =>
+      prev.some(step => step.status === 'pending' || step.status === 'running')
+        ? prev
+        : [])
   }
 
   // Writes generated ui:groups into the file on screen. The vendor edits titles

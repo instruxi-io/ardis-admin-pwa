@@ -22,9 +22,10 @@ export function VendorOrders() {
     retry: false,
   })
 
-  // A tenant admin belongs to no single vendor, so this cannot be scoped for
-  // them and the endpoint says so. Nothing useful to render.
-  if (isLoading || !data) return null
+  if (isLoading) return null
+  // Before the !data guard: on an error `data` is undefined, so testing it
+  // first returned null and this card could never render.
+  //
   // An error is not the same as "not applicable to you". The panel used to
   // disappear on both, so a vendor whose orders failed to load saw the same
   // screen as one who has no orders panel at all.
@@ -43,6 +44,10 @@ export function VendorOrders() {
       </CardContent>
     </Card>
   )
+
+  // A tenant admin belongs to no single vendor, so this cannot be scoped for
+  // them and the endpoint says so. Nothing useful to render.
+  if (!data) return null
 
   return (
     <Card>
