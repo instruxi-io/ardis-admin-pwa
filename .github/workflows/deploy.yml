@@ -61,4 +61,36 @@ jobs:
           # alias — the deployment lands on a hashed preview URL and
           # master.credpass-admin-portal-dev.pages.dev, the link the client
           # has, keeps serving whatever it served before.
-          command: pages deploy dist --project-name=credpass-admin-portal-dev --branch=master --commit-dirty=true
+          command: pages deploy dist --project-name=credpass-admin-portal-dev --branch=master
+
+      # Cloudflare refreshes the project alias on every deploy, but the
+      # master.<project> subdomain is a frozen artifact: it still serves a build
+      # from before this pipeline existed, and two emails sent to the client
+      # point at it. So a green deploy has been proving nothing about the URL
+      # some people actually open.
+      #
+      # This fails the build when the canonical URL is not serving what we just
+      # built, and reports whether the stale branch alias has caught up. Give
+      # the client the canonical URL, not the branch one.
+      - name: The live portal must serve what we just built
+        run: |
+          set -euo pipefail
+          BUILT="$(basename "$(ls dist/assets/index-*.js | head -1)")"
+          CANON="https://credpass-admin-portal-dev.pages.dev"
+          BRANCH="https://master.credpass-admin-portal-dev.pages.dev"
+          echo "built: $BUILT"
+          for i in 1 2 3 4 5 6; do
+            SERVED="$(curl -fsS "$CANON/?cb=$RANDOM" | grep -oE 'index-[A-Za-z0-9_-]+\.js' | head -1 || true)"
+            [ "$SERVED" = "$BUILT" ] && break
+            echo "  $CANON serving ${SERVED:-<none>}, waiting..."
+            sleep 10
+          done
+          if [ "${SERVED:-}" != "$BUILT" ]; then
+            echo "::error::$CANON is serving '${SERVED:-nothing}', not '$BUILT'."
+            exit 1
+          fi
+          echo "$CANON is current"
+          STALE="$(curl -fsS "$BRANCH/?cb=$RANDOM" | grep -oE 'index-[A-Za-z0-9_-]+\.js' | head -1 || true)"
+          if [ "$STALE" != "$BUILT" ]; then
+            echo "::warning::$BRANCH is serving '${STALE:-nothing}', not '$BUILT'. Anyone given that link sees an old portal; send them $CANON."
+          fi --commit-dirty=true
