@@ -77,6 +77,28 @@ describe('flat price units', () => {
     expect(first['x-price-one-time']).toBe(2500)
   })
 
+  it('carries the flat price currency through when the record has one', () => {
+    // Publishing reads a missing x-price-currency as usd, which turns a GBP
+    // product into a new USD price with the GBP one archived behind it.
+    const text = productToFileText({
+      id: 'prod_gbp', name: 'UK Check', verifier_id: 'ardis',
+      sku: 'uk-check', credential_type: 'license',
+      order_schema: { type: 'object', properties: {} },
+      price_one_time: 25, price_currency: 'gbp',
+    } as never)
+    expect(parseBundle(text)!['x-price-currency']).toBe('gbp')
+  })
+
+  it('writes no currency when the record has none, rather than assuming usd', () => {
+    const text = productToFileText({
+      id: 'prod_x', name: 'Example Check', verifier_id: 'ardis',
+      sku: 'example-check', credential_type: 'example-check',
+      order_schema: { type: 'object', properties: {} },
+      price_one_time: 25,
+    } as never)
+    expect(text).not.toContain('x-price-currency')
+  })
+
   it('leaves a product with no flat price alone', () => {
     const text = productToFileText({
       id: 'prod_y', name: 'Subscription', verifier_id: 'ardis',

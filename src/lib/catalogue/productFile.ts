@@ -40,6 +40,15 @@ export function productToFileText(p: ProductEntry): string {
   // way. Convert once, here, where the two units meet.
   if (p.price_one_time) {
     obj1['x-price-one-time'] = Math.round(Number(p.price_one_time) * 100)
+    // Publishing defaults a blank currency to usd, so a GBP flat price that
+    // comes back without its currency is republished as a new USD price and
+    // the real one is archived. Only written when the record actually carries
+    // a currency: left out, PricingMapper still shows its "so USD" note, which
+    // is honest, where baking in 'usd' here would not be.
+    // ponytail: the product response does not report the flat price's currency
+    // yet (buildPricingResponse drops it in the one_time branch), so this is
+    // inert until that lands; the upgrade is server-side, not here.
+    if (p.price_currency) obj1['x-price-currency'] = p.price_currency
   }
 
   const files = [obj1, p.order_ui_schema ?? {}, {}]

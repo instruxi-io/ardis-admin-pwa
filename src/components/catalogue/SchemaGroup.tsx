@@ -13,6 +13,7 @@ import { Component, useState } from 'react'
 import { CredentialPreview } from '@/components/ui/schema-preview'
 import { format } from 'date-fns'
 import { schemasApi } from '@/lib/ardisMsClient'
+import { toast } from 'sonner'
 
 export class PreviewErrorBoundary extends Component<
   { children: ReactNode; label: string },
@@ -155,7 +156,14 @@ export function SchemaGroup({ verifierId, credentialType, versions, products, dr
       const data = await schemasApi.get(verifierId, credentialType, live.version)
       setPreviewSchema(data)
       setPreviewOpen(true)
-    } catch { /* silent */ } finally {
+    } catch (e) {
+      // Swallowing this left a dead button: the panel below only renders once
+      // previewSchema is set, so a failed fetch just put the label back to
+      // Preview with nothing for the admin to read or quote.
+      toast.error(`Could not load the ${credentialType} ${live.version} preview`, {
+        description: `${e instanceof Error ? e.message : 'Unknown error'}. Try again, and re-import this version if it keeps failing.`,
+      })
+    } finally {
       setPreviewLoading(false)
     }
   }

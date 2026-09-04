@@ -167,7 +167,6 @@ export default function VerifiersPage() {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['verifiers'] })
       queryClient.invalidateQueries({ queryKey: ['tenant-members-verifiers', activeTenantId] })
       toast.success('Verifier onboarded — user and vendor group created; they can log in and publish under their verifier_id.')
       setShowForm(false)
@@ -179,7 +178,7 @@ export default function VerifiersPage() {
   const deactivateMutation = useMutation({
     mutationFn: (id: string) => getEnforcerApiClient().patch(`admin/users/${id}/deactivate`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['verifiers', activeTenantId] })
+      queryClient.invalidateQueries({ queryKey: ['tenant-members-verifiers', activeTenantId] })
       toast.success('Verifier deactivated')
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed'),
@@ -188,7 +187,7 @@ export default function VerifiersPage() {
   const activateMutation = useMutation({
     mutationFn: (id: string) => getEnforcerApiClient().patch(`admin/users/${id}/activate`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['verifiers', activeTenantId] })
+      queryClient.invalidateQueries({ queryKey: ['tenant-members-verifiers', activeTenantId] })
       toast.success('Verifier activated')
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed'),

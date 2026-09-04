@@ -598,6 +598,8 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
     setFiles([{ id: `edit-product-${product.sku ?? product.name}`, name: `${product.name} (edit)`, raw: productToFileText(product), edited: null }])
     setSelectedId(null)
     setPublishLog([])
+    // The tick is a review of the file that was on screen, not of this one.
+    setPublishConfirmed(false)
     setShowImport(true)
     toast.success(`Loaded ${product.name} — edit the order form and publish to update it in place`)
   }
@@ -615,6 +617,12 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
           "type": "object",
           "properties": {},
           ...(content.data_schema ?? {}),
+          // After the spread so a stored schema cannot drop it. Without it the
+          // downloaded file reads back as a legacy combined bundle, and
+          // re-importing it republishes the live product with an empty order
+          // form and no pricing, archiving every price it had. Declared, the
+          // worst a re-import can do is fail the immutable-version check.
+          "x-publishes": "credential-schema",
         },
         content.ui_schema ?? {},
         {}
@@ -675,6 +683,8 @@ export default function SchemasPage({ mode = 'vendor' }: { mode?: 'vendor' | 'pl
       setFiles([{ id: `new-version-${name}`, name: `${name} (new version)`, raw: text, edited: null }])
       setSelectedId(null)
       setPublishLog([])
+      // The tick is a review of the file that was on screen, not of this one.
+      setPublishConfirmed(false)
       setShowImport(true)
       toast.success(`Loaded ${name} as ${nextVersion(version)} — review and publish`)
     } catch {

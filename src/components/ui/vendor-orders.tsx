@@ -5,6 +5,16 @@ import { Card, CardContent, CardHeader, CardTitle } from './card'
 import { InfoDot } from './tooltip'
 
 /**
+ * A failed order that never left the platform: a missing route, key or
+ * connector fails the dispatch before any request is made, and the platform
+ * only counts an attempt once it has an endpoint to post to. So no attempts
+ * means the vendor's endpoint never saw this order and cannot be at fault.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export const failedBeforeSending = (d: VendorOrder['delivery']) =>
+  !!d && (d.state === 'failed' || !!d.last_error) && !d.attempts
+
+/**
  * A vendor's recent orders.
  *
  * Until this existed a vendor could not see an order at all: the dispatch queue
@@ -56,8 +66,8 @@ export function VendorOrders() {
           <Inbox size={14} />
           <InfoDot title="Your recent orders">
             Every order a professional placed with you, and whether it reached your
-            endpoint. If one was turned away, the reason your endpoint gave is shown
-            here so you can find it in your own logs.
+            endpoint. Each failure says whether your endpoint turned the order away
+            or we never managed to send it.
           </InfoDot>
           Your recent orders
         </CardTitle>
@@ -74,6 +84,7 @@ export function VendorOrders() {
           // and it can be empty. Reading the message alone made an abandoned
           // delivery look identical to one still being retried.
           const failed = o.delivery?.state === 'failed' || !!o.delivery?.last_error
+          const neverSent = failedBeforeSending(o.delivery)
           const delivered = o.delivery?.state === 'delivered'
           // Delivered, but not by them. The standby marks the dispatch
           // delivered and clears the error, so this order used to wear the same
@@ -105,9 +116,14 @@ export function VendorOrders() {
                     {viaStandby && o.delivery?.standby_reason && (
                     <p className="text-xs text-amber-600 mt-1">{o.delivery.standby_reason}</p>
                   )}
-                  {failed && (
+                  {failed && !neverSent && (
                       <span className="inline-flex items-center gap-1 text-xs text-red-500">
                         <XCircle size={12} />Your endpoint turned it away
+                      </span>
+                    )}
+                    {neverSent && (
+                      <span className="inline-flex items-center gap-1 text-xs text-red-500">
+                        <XCircle size={12} />We never sent this to you
                       </span>
                     )}
                     {waitingHours > 0 && (
@@ -127,7 +143,9 @@ export function VendorOrders() {
                   {failed && (
                     <p className="text-xs text-red-500 mt-1">
                       {o.delivery?.last_error ||
-                        'Delivery was abandoned after repeated attempts. No reason was recorded.'}
+                        (neverSent
+                          ? 'It failed on our side before it left. No reason was recorded, so ask us and we will chase it.'
+                          : 'Delivery was abandoned after repeated attempts. No reason was recorded.')}
                     </p>
                   )}
                   <p className="text-xs text-muted-foreground mt-0.5">

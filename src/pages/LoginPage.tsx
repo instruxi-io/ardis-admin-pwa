@@ -12,8 +12,19 @@ import { Building2, ArrowRight, KeyRound, Mail } from 'lucide-react'
 type Step = 'email' | 'tenant-pick' | 'otp'
 type LoginMode = 'otp' | 'apikey'
 
+// ProtectedRoute admits developers and tenant admins only, so sending anyone
+// else to a portal route bounced them straight back here and the two Navigate
+// components ping-ponged until React tripped its nested-update guard. null
+// means "no route this account can open", which is a stop, not a redirect.
+export function loginDestination(role: string | null, isDeveloper: boolean, isTenantAdmin: boolean) {
+  if (!isDeveloper && !isTenantAdmin) return null
+  // Normalized context role, not raw claims/account.role: API-key logins
+  // carry role as an object and OTP claims use "tenant admin" with a space.
+  return role === 'admin' ? '/tenants' : '/schemas'
+}
+
 export default function LoginPage() {
-  const { ready, authenticated, role } = useAuth()
+  const { ready, authenticated, role, account, claims, isDeveloper, isTenantAdmin, logout } = useAuth()
   const { sendOtp, verifyOtp, apiKeyLogin } = useAuth()
   const [mode, setMode] = useState<LoginMode>('otp')
   const [step, setStep] = useState<Step>('email')
@@ -27,10 +38,20 @@ export default function LoginPage() {
   if (!ready) return null
 
   if (authenticated) {
-    // Normalized context role, not raw claims/account.role: API-key logins
-    // carry role as an object and OTP claims use "tenant admin" with a space.
-    const dest = role === 'admin' ? '/tenants' : '/schemas'
-    return <Navigate to={dest} replace />
+    const dest = loginDestination(role, isDeveloper, isTenantAdmin)
+    if (dest) return <Navigate to={dest} replace />
+    // Sign out lives in the sidebar, behind the same gate that just refused
+    // this account, so without a button here there is no way back out.
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 px-4 text-center bg-background">
+        <p className="text-sm">Signed in as {account?.email ?? claims?.email ?? 'this account'}.</p>
+        <p className="text-sm text-muted-foreground max-w-sm">
+          CredPass Admin could not confirm a developer or tenant admin role for it, so there is
+          nothing here to open. Sign out and use an account that has one.
+        </p>
+        <Button variant="outline" onClick={logout}>Sign out</Button>
+      </div>
+    )
   }
 
   const attemptSendOtp = async (emailVal: string, code?: string) => {
