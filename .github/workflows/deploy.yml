@@ -61,7 +61,7 @@ jobs:
           # alias — the deployment lands on a hashed preview URL and
           # master.credpass-admin-portal-dev.pages.dev, the link the client
           # has, keeps serving whatever it served before.
-          command: pages deploy dist --project-name=credpass-admin-portal-dev --branch=master
+          command: pages deploy dist --project-name=credpass-admin-portal-dev --branch=master --commit-dirty=true
 
       # Cloudflare refreshes the project alias on every deploy, but the
       # master.<project> subdomain is a frozen artifact: it still serves a build
@@ -93,4 +93,4 @@ jobs:
           STALE="$(curl -fsS "$BRANCH/?cb=$RANDOM" | grep -oE 'index-[A-Za-z0-9_-]+\.js' | head -1 || true)"
           if [ "$STALE" != "$BUILT" ]; then
             echo "::warning::$BRANCH is serving '${STALE:-nothing}', not '$BUILT'. Anyone given that link sees an old portal; send them $CANON."
-          fi --commit-dirty=true
+          fi
