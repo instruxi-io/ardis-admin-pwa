@@ -79,6 +79,12 @@ export function VendorOrders() {
           // delivered and clears the error, so this order used to wear the same
           // green "Reached you" as one their endpoint actually accepted.
           const viaStandby = !!o.delivery?.served_by_standby
+          // The platform sent it and has heard nothing back for hours. Shown
+          // here because the alternative was a log line nobody reads, which is
+          // how ten orders went unanswered for four days.
+          const waitingHours = o.waiting_on_you_seconds
+            ? Math.floor(o.waiting_on_you_seconds / 3600)
+            : 0
           return (
             <div key={o.order_id} className="px-6 py-3 border-t border-border">
               <div className="flex items-start justify-between gap-4">
