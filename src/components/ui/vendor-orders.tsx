@@ -104,6 +104,11 @@ export function VendorOrders() {
                         <XCircle size={12} />Your endpoint turned it away
                       </span>
                     )}
+                    {waitingHours > 0 && (
+                      <span className="inline-flex items-center gap-1 text-xs text-amber-600 font-medium">
+                        <Clock size={12} />Waiting on you for {waitingHours}h
+                      </span>
+                    )}
                     {!delivered && !failed && (
                       <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                         <Clock size={12} />{o.status}

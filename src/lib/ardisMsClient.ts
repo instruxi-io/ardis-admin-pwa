@@ -237,6 +237,8 @@ export interface VendorOrder {
     served_by_standby?: boolean
     standby_reason?: string
   }
+  /** Set when the order has been with this vendor, unanswered, past the platform's patience. */
+  waiting_on_you_seconds?: number
 }
 
 export const vendorOrdersApi = {
