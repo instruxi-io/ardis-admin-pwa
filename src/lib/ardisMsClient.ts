@@ -229,7 +229,14 @@ export interface VendorOrder {
   placed_at: string
   updated_at: string
   vendor_order_id: string
-  delivery?: { state: string; attempts: number; last_error: string }
+  delivery?: {
+    state: string
+    attempts: number
+    last_error: string
+    /** The vendor's own endpoint refused it and our standby fulfilled it. */
+    served_by_standby?: boolean
+    standby_reason?: string
+  }
 }
 
 export const vendorOrdersApi = {

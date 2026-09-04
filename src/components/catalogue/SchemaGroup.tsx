@@ -216,7 +216,19 @@ export function SchemaGroup({ verifierId, credentialType, versions, products, dr
               {p.id && onArchive && p.active !== false && (
                 <button
                   type="button"
-                  onClick={() => onArchive(p.id!)}
+                  // Archiving takes a live product off sale immediately, and
+                  // nothing on this screen puts it back. One stray click on a
+                  // row of small text links and a vendor's product stops
+                  // selling, with no undo and nothing said.
+                  onClick={() => {
+                    const ok = window.confirm(
+                      `Take "${p.name}" off sale?\n\n` +
+                      'Professionals will no longer see it in the catalogue and ' +
+                      'cannot order it. Orders already placed are unaffected.\n\n' +
+                      'To sell it again you publish the product file for it once more.'
+                    )
+                    if (ok) onArchive(p.id!)
+                  }}
                   className="text-xs text-muted-foreground hover:text-destructive transition-colors shrink-0"
                 >
                   Archive

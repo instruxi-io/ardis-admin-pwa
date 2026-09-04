@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { CheckCircle2, Clock, Inbox, XCircle } from 'lucide-react'
+import { CheckCircle2, Clock, Inbox, XCircle, AlertTriangle } from 'lucide-react'
 import { vendorOrdersApi, type VendorOrder } from '@/lib/ardisMsClient'
 import { Card, CardContent, CardHeader, CardTitle } from './card'
 import { InfoDot } from './tooltip'
@@ -75,6 +75,10 @@ export function VendorOrders() {
           // delivery look identical to one still being retried.
           const failed = o.delivery?.state === 'failed' || !!o.delivery?.last_error
           const delivered = o.delivery?.state === 'delivered'
+          // Delivered, but not by them. The standby marks the dispatch
+          // delivered and clears the error, so this order used to wear the same
+          // green "Reached you" as one their endpoint actually accepted.
+          const viaStandby = !!o.delivery?.served_by_standby
           return (
             <div key={o.order_id} className="px-6 py-3 border-t border-border">
               <div className="flex items-start justify-between gap-4">
@@ -82,12 +86,20 @@ export function VendorOrders() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-mono">{o.order_id}</span>
                     <span className="text-xs text-muted-foreground">{o.credential_type}</span>
-                    {delivered && !failed && (
+                    {delivered && !failed && !viaStandby && (
                       <span className="inline-flex items-center gap-1 text-xs text-emerald-600">
                         <CheckCircle2 size={12} />Reached you
                       </span>
                     )}
-                    {failed && (
+                    {delivered && viaStandby && (
+                      <span className="inline-flex items-center gap-1 text-xs text-amber-600">
+                        <AlertTriangle size={12} />Your endpoint refused it, our standby fulfilled it
+                      </span>
+                    )}
+                    {viaStandby && o.delivery?.standby_reason && (
+                    <p className="text-xs text-amber-600 mt-1">{o.delivery.standby_reason}</p>
+                  )}
+                  {failed && (
                       <span className="inline-flex items-center gap-1 text-xs text-red-500">
                         <XCircle size={12} />Your endpoint turned it away
                       </span>
@@ -98,6 +110,9 @@ export function VendorOrders() {
                       </span>
                     )}
                   </div>
+                  {viaStandby && o.delivery?.standby_reason && (
+                    <p className="text-xs text-amber-600 mt-1">{o.delivery.standby_reason}</p>
+                  )}
                   {failed && (
                     <p className="text-xs text-red-500 mt-1">
                       {o.delivery?.last_error ||
