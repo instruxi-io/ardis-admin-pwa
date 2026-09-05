@@ -77,7 +77,7 @@ export class EnforcerApiClient {
 
         if (
           !original._retry &&
-          this.isRetryable(error) &&
+          this.isRetryable(error, original?.method) &&
           (original._retryCount ?? 0) < this.maxRetries
         ) {
           original._retry = true
@@ -91,9 +91,18 @@ export class EnforcerApiClient {
     )
   }
 
-  private isRetryable(error: unknown): boolean {
-    if (!(error as { response?: unknown }).response) return true
+  // A timeout is not a failure, it is an unknown. The write may well have
+  // landed and only the reply was lost, so replaying a POST duplicates it:
+  // vendor onboarding ran twice, and the second run is the one that reports an
+  // error. Only replay a request that means the same thing twice.
+  private isRetryable(error: unknown, method?: string): boolean {
+    const idempotent = ['get', 'head', 'options'].includes(
+      (method ?? 'get').toLowerCase()
+    )
+    if (!(error as { response?: unknown }).response) return idempotent
     const status = (error as { response: { status: number } }).response.status
+    // A 429 or a 5xx is a definite answer: the server says it did not do the
+    // work, so replaying it is safe whatever the method.
     return status >= 500 || status === 429
   }
 

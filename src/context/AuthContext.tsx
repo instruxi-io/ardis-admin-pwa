@@ -26,6 +26,22 @@ interface AuthContextValue extends AuthState {
   isTenantAdmin: boolean
 }
 
+const ACTIVE_TENANT_KEY = 'ardis_admin_active_tenant'
+
+// The tenant the admin last picked, if any.
+//
+// setActiveTenant has always written this, and nothing ever read it back, so
+// picking a tenant and reloading silently dropped you into the tenant on your
+// token instead, with the picker still showing the one you chose. The pick
+// wins on session restore; logout clears it.
+function storedTenant(): string | null {
+  try {
+    return localStorage.getItem(ACTIVE_TENANT_KEY)
+  } catch {
+    return null
+  }
+}
+
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -60,7 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             authenticated: true,
             account: res.data,
             claims,
-            activeTenantId: claims?.tenant_id ?? null,
+            activeTenantId: storedTenant() ?? claims?.tenant_id ?? null,
           })
         })
         .catch(() => {
@@ -69,7 +85,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             authenticated: true,
             account: null,
             claims,
-            activeTenantId: claims?.tenant_id ?? null,
+            activeTenantId: storedTenant() ?? claims?.tenant_id ?? null,
           })
         })
       return
@@ -85,7 +101,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             authenticated: true,
             account: res.data,
             claims: null,
-            activeTenantId: res.data.tenant_id ?? (res.data as any).tenant?.id ?? null,
+            activeTenantId: storedTenant() ?? res.data.tenant_id ?? (res.data as any).tenant?.id ?? null,
           })
         })
         .catch((err: unknown) => {
@@ -153,13 +169,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const setActiveTenant = (tenantId: string) => {
     setState((s) => ({ ...s, activeTenantId: tenantId }))
-    localStorage.setItem('ardis_admin_active_tenant', tenantId)
+    try {
+      localStorage.setItem(ACTIVE_TENANT_KEY, tenantId)
+    } catch {
+      /* private mode: the pick simply does not survive a reload */
+    }
   }
 
   const logout = () => {
     tokenStorage.clear()
     apiKeyStorage.clear()
-    localStorage.removeItem('ardis_admin_active_tenant')
+    try {
+      localStorage.removeItem(ACTIVE_TENANT_KEY)
+    } catch {
+      /* nothing was stored */
+    }
     setState({ ready: true, authenticated: false, account: null, claims: null, activeTenantId: null })
   }
 
